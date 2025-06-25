@@ -38,16 +38,18 @@ def main():
     parser = argparse.ArgumentParser(description="Generate LOD textures from an OBJ file.")
     parser.add_argument("input", type=str, help="Path to the input OBJ file")
     parser.add_argument("-l", "--lods", type=int, default=3, help= "Number of LOD levels to generate (default:3)")
+    parser.add_argument("-c", "--compress", type=int, default=0, help="Factor to compress textures (0 for no compression, 1 for low, 2 for medium, 3 for high)")
 
     args = parser.parse_args()
     obj_path = args.input
     num_lods = args.lods
+    compress = args.compress
 
     mtl_path = parse_obj_for_mtl(obj_path)
     texture_path = parse_mtl_for_texture(mtl_path)
     generate_lods(texture_path, num_lods)
 
-def run_texture_compression(obj_path, num_lods, output_folder):
+def run_texture_compression(obj_path, num_lods, output_folder, compress=0):
     mtl_path = parse_obj_for_mtl(obj_path)
     texture_path = parse_mtl_for_texture(mtl_path)
 
@@ -59,7 +61,7 @@ def run_texture_compression(obj_path, num_lods, output_folder):
     width, height = image.size
 
     for i in range(num_lods):
-        scale = 2 ** (i + 1) 
+        scale = 2 ** (i + compress)
         new_width = max(1, width // scale)
         new_height = max(1, height // scale)
         resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)

@@ -13,7 +13,7 @@ class LODGenerator:
         self.base_name = os.path.splitext(os.path.basename(input_file))[0]
         
         # LOD reduction ratios (percentage of original geometry to keep)
-        self.lod_ratios = [1.0, 0.5, 0.1, 0.1][:lod_levels]
+        self.lod_ratios = [1.0, 0.5, 0.25, 0.1][:lod_levels]
         
     def clear_scene(self):
         """Clear all objects from the scene"""

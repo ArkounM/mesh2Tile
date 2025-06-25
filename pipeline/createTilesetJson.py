@@ -92,7 +92,7 @@ def restructure_tileset(input_path, output_path):
     with open(output_path, "w") as f:
         json.dump(final_tileset, f, indent=2)
 
-    print(f"✅ Restructured tileset written to: {output_path}")
+    print(f"Restructured tileset written to: {output_path}")
 
 
 

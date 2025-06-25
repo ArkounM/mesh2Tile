@@ -35,14 +35,13 @@ def update_mtl_texture_path(obj_dir, texture_dir):
                 print(f"[Warning] No map_Kd found in {mtl_name}")
                 continue
 
-            # Extract prefix (without _LOD suffix)
-            base_prefix, ext = os.path.splitext(original_texture_name)
-            if "_LOD" in base_prefix:
-                base_prefix = base_prefix.split("_LOD")[0]
-
             # Determine which LOD this is
             lod_suffix = os.path.splitext(filename)[0].split("_")[-1]  # e.g., LOD0
-            new_texture_name = f"{base_prefix}_{lod_suffix}.png"
+
+            # Append the new LOD to the original texture name (before extension)
+            base_name, ext = os.path.splitext(original_texture_name)
+            new_texture_name = f"{base_name}_{lod_suffix}{ext}"
+
             texture_rel_path = os.path.join("..", "texture", new_texture_name)
 
             # Rewrite MTL

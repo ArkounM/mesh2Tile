@@ -3,6 +3,7 @@ import os
 import sys
 import shutil
 
+from pipeline.flip_obj_axes import flip_obj_axes
 from pipeline.compress_texture import run_texture_compression
 from pipeline.generate_LODs import run_blender_lod_gen
 from pipeline.assignTexture2LOD import update_mtl_texture_path
@@ -19,19 +20,38 @@ def main():
     parser.add_argument("--lods", "-l", type=int, default=3, help="Number of LODs to generate (default: 3)")
     parser.add_argument("--gzip", action="store_true", help="Enable gzip compression for output")
     parser.add_argument("--temp", action="store_true", help="Preserve the temp folder after processing")
+    parser.add_argument("--flip-x", action="store_true", help="Flip X axis of input OBJ")
+    parser.add_argument("--flip-y", action="store_true", help="Flip Y axis of input OBJ")
+    parser.add_argument("--flip-z", action="store_true", help="Flip Z axis of input OBJ")
+    parser.add_argument("--flip-normals", action="store_true", help="Flip normals as well")
+    parser.add_argument("-c", "--compress", type=int, default=0, help="Texture compression level (Default 0: none, 1: low, 2: medium, 3: high)")
+
     args = parser.parse_args()
 
     input = os.path.abspath(args.input)
     output = os.path.abspath(args.output)
     lods = args.lods
+    compress = args.compress
 
     # === Blender config ===
     blender_exe = "C:/Program Files/Blender Foundation/Blender 4.4/blender.exe"
-    blender_script = "./pipeline/BlenderScripts/lodOBJ_simple.py"
-    tiling_script = "./pipeline/BlenderScripts/tileOBJ.py"
+    blender_script = "./BlenderScripts/lodOBJ.py"
+    tiling_script = "./BlenderScripts/tileOBJ.py"
+
+    # === Step 0: Flip axes on input OBJ (if specified) ===
+    if args.flip_x or args.flip_y or args.flip_z:
+        print(" Flipping OBJ axes...")
+        flip_obj_axes(
+            input_file=input,
+            output_file=None,  # Overwrite in-place
+            flip_x=args.flip_x,
+            flip_y=args.flip_y,
+            flip_z=args.flip_z,
+            flip_normals=args.flip_normals
+        )
 
     # === Step 1: Texture compression ===
-    run_texture_compression(input, lods, output)
+    run_texture_compression(input, lods, output, compress)
 
     # === Step 2: LOD mesh generation ===
     run_blender_lod_gen(blender_exe, blender_script, input, output, lods)
