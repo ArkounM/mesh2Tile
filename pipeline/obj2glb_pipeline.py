@@ -1,33 +1,38 @@
-import os
 import subprocess
+import os
 
-NODE_PATH = r"C:\Program Files\nodejs\npx.cmd"  # Adjust if needed
+NODE_PATH = r"C:\Program Files\nodejs\npx.cmd"
 
 def convert_obj_to_glb(input_dir, output_dir):
-    """
-    Convert all OBJ files in a directory to GLB using obj23dtiles.
-    """
     print(f"Converting OBJs in {input_dir} to GLB...")
     os.makedirs(output_dir, exist_ok=True)
 
     for file_name in os.listdir(input_dir):
-        if file_name.lower().endswith(".obj"):
-            input_obj_path = os.path.join(input_dir, file_name)
+        if not file_name.lower().endswith(".obj"):
+            continue
+        
 
-            # Run obj23dtiles
+        input_obj_path = os.path.join(input_dir, file_name)
+
+        try:
             subprocess.run([
                 NODE_PATH, "obj23dtiles",
                 "-i", input_obj_path, "-b"
             ], check=True)
 
-            # Move resulting GLB into output dir
+            # Move resulting .glb to output
             for file in os.listdir(os.path.dirname(input_obj_path)):
                 if file.lower().endswith(".glb"):
                     src = os.path.join(os.path.dirname(input_obj_path), file)
                     dst = os.path.join(output_dir, file)
                     if os.path.abspath(src) != os.path.abspath(dst):
                         os.replace(src, dst)
-                        print(f"Moved: {dst}")
+                        print(f"✅ Converted: {file}")
+
+        except subprocess.CalledProcessError:
+            print(f"❌ Failed to convert {file_name} — skipping (non-zero exit code)")
+        except Exception as e:
+            print(f"❌ Unexpected error converting {file_name}: {e}")
 
 def generate_tileset_json(output_dir, longitude="-75.703833", latitude="45.417139", height="77.572"):
     """

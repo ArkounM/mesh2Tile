@@ -7,9 +7,10 @@ from pipeline.flip_obj_axes import flip_obj_axes
 from pipeline.compress_texture import run_texture_compression
 from pipeline.generate_LODs import run_blender_lod_gen
 from pipeline.assignTexture2LOD import update_mtl_texture_path
-from pipeline.tileLOD import run_blender_script
+from pipeline.tileLOD import run_blender_script, run_blender_bake
 from pipeline.obj2glb_pipeline import convert_obj_to_glb, generate_tileset_json, gzip_output
 from pipeline.createTilesetJson import restructure_tileset
+
 
 
 def main():
@@ -29,7 +30,13 @@ def main():
     args = parser.parse_args()
 
     input = os.path.abspath(args.input)
-    output = os.path.abspath(args.output)
+    # Get the base name of the input file (e.g., building_LOD400.obj → building_LOD400)
+    input_basename = os.path.splitext(os.path.basename(input))[0]
+
+    # Make a subdirectory in the output path
+    output = os.path.join(os.path.abspath(args.output), input_basename)
+    os.makedirs(output, exist_ok=True)
+
     lods = args.lods
     compress = args.compress
 
@@ -37,6 +44,7 @@ def main():
     blender_exe = "C:/Program Files/Blender Foundation/Blender 4.4/blender.exe"
     blender_script = "./BlenderScripts/lodOBJ.py"
     tiling_script = "./BlenderScripts/tileOBJ.py"
+    baking_script = "./BlenderScripts/bakeTextures.py"
 
     # === Step 0: Flip axes on input OBJ (if specified) ===
     if args.flip_x or args.flip_y or args.flip_z:
@@ -85,13 +93,33 @@ def main():
                 blender_exe=blender_exe,
                 script_path=tiling_script
             )
+    # === Step 4.5: Bake textures to tiled OBJs ===
 
-    # === Step 5: Convert tiles to GLB + Generate tilesets ===
     for lod in os.listdir(tiles_base_dir):
         lod_dir = os.path.join(tiles_base_dir, lod)
         if not os.path.isdir(lod_dir):
             continue
-        convert_obj_to_glb(lod_dir, output)
+
+        print(f"Baking textures in: {lod_dir}")
+        baked_output_dir = os.path.join(lod_dir, "baked")
+        run_blender_bake(
+            blender_exe=blender_exe,
+            script_path=baking_script,
+            input_folder=lod_dir,
+            output_folder=baked_output_dir
+)
+
+
+    # === Step 5: Convert tiles to GLB + Generate tilesets ===
+    for lod in os.listdir(tiles_base_dir):
+        lod_dir = os.path.join(tiles_base_dir, lod, "baked")
+        if not os.path.isdir(lod_dir):
+            continue
+
+        try:
+            convert_obj_to_glb(lod_dir, output)
+        except Exception as e:
+            print(f"Skipping LOD folder '{lod}': {e}")
 
     # === Step 6: Clean up temp directory unless --temp is used ===
     temp_dir = os.path.join(output, "temp")

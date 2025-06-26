@@ -6,7 +6,7 @@ import sys
 
 # Configuration
 obj_path = "C:/Users/AMerchant/Documents/Level_4/test2/LODs/P28_01_INT_401S_LOD400_LOD0.obj"
-output_dir = "C:/Users/AMerchant/Documents/Level_4/test2_Tiled_8/"
+output_dir = "C:/Users/AMerchant/Documents/Level_4/test3_Tiled_0/"
 
 # Parse arguments passed after the "--" delimiter
 argv = sys.argv
@@ -235,7 +235,7 @@ def create_chunk_with_materials(bm, chunk_name, original_obj):
     if "material_index" in bm.faces.layers.int:
         material_layer = bm.faces.layers.int["material_index"]
 
-        # ✅ Ensure lookup table is updated before using face indices
+        # Ensure lookup table is updated before using face indices
         bm.faces.ensure_lookup_table()
 
         for i, poly in enumerate(me.polygons):

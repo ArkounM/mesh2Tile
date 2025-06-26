@@ -13,7 +13,7 @@ class LODGenerator:
         self.base_name = os.path.splitext(os.path.basename(input_file))[0]
         
         # LOD reduction ratios (percentage of original geometry to keep)
-        self.lod_ratios = [1.0, 0.5, 0.25, 0.1][:lod_levels]
+        self.lod_ratios = [1.0, 0.1, 0.05, 0.01][:lod_levels]
         
     def clear_scene(self):
         """Clear all objects from the scene"""
@@ -39,6 +39,25 @@ class LODGenerator:
                 
         # Return selected objects after import
         return list(bpy.context.view_layer.objects.selected)
+    
+    def cleanup_mesh(self, obj, merge_distance=0.001):
+        """Clean up the mesh by merging vertices by distance"""
+        # Ensure we're working with the correct object
+        bpy.context.view_layer.objects.active = obj
+        
+        # Enter edit mode
+        bpy.ops.object.mode_set(mode='EDIT')
+        
+        # Select all vertices
+        bpy.ops.mesh.select_all(action='SELECT')
+        
+        # Merge vertices by distance (equivalent to Mesh > Clean Up > Merge By Distance)
+        bpy.ops.mesh.remove_doubles(threshold=merge_distance)
+        
+        # Return to object mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        print(f"  Cleaned up mesh: {obj.name} (merged vertices within {merge_distance} distance)")
         
     def decimate_mesh(self, obj, ratio):
         """Apply decimation modifier to reduce polygon count"""
@@ -322,8 +341,10 @@ class LODGenerator:
                     lod_collection.objects.link(lod_obj)
                     lod_objects.append(lod_obj)
                     
-                    # Apply decimation if not LOD 0
+                    # Clean up mesh before decimation (skip for LOD 0 to preserve original)
                     if lod_level > 0:
+                        self.cleanup_mesh(lod_obj)
+                        # Apply decimation after cleanup
                         self.decimate_mesh(lod_obj, ratio)
                         
                     # Optimize materials
@@ -354,7 +375,8 @@ class LODGenerator:
         for i, ratio in enumerate(self.lod_ratios):
             poly_percentage = int(ratio * 100)
             output_file = f"{self.base_name}_LOD{i}.obj"
-            print(f"  LOD {i}: {poly_percentage}% polygons -> {output_file}")
+            cleanup_note = " (with mesh cleanup)" if i > 0 else ""
+            print(f"  LOD {i}: {poly_percentage}% polygons -> {output_file}{cleanup_note}")
             
         print("="*50)
 

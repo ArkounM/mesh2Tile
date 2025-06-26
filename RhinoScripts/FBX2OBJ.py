@@ -45,11 +45,11 @@ def fbx_to_obj_converter():
     # Select all imported objects
     rs.SelectObjects(all_objects)
     
-    # Rotate 90 degrees counter-clockwise about Y axis
-    # Counter-clockwise rotation about Y axis is negative rotation in Rhino
+    # Rotate 90 degrees counter-clockwise about X axis
+    # Counter-clockwise rotation about X axis is negative rotation in Rhino
     center_point = [0, 0, 0]  # Origin
-    axis_vector = [0, 1, 0]   # Y axis
-    angle = -90  # -90 degrees for counter-clockwise
+    axis_vector = [1, 0, 0]   # x axis
+    angle = 90  # 90 degrees for counter-clockwise
     
     print("Rotating objects 90 degrees counter-clockwise about Y axis...")
     rs.RotateObjects(all_objects, center_point, angle, axis_vector)
@@ -128,10 +128,10 @@ def fbx_to_obj_batch_converter():
         # Select all imported objects
         rs.SelectObjects(all_objects)
         
-        # Rotate 90 degrees counter-clockwise about Y axis
+        # Rotate 90 degrees counter-clockwise about X axis
         center_point = [0, 0, 0]
-        axis_vector = [0, 1, 0]
-        angle = -90
+        axis_vector = [1, 0, 0]
+        angle = 90
         
         rs.RotateObjects(all_objects, center_point, angle, axis_vector)
         
