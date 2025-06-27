@@ -45,11 +45,11 @@ def fbx_to_obj_converter():
     # Select all imported objects
     rs.SelectObjects(all_objects)
     
-    # Rotate 90 degrees counter-clockwise about X axis
-    # Counter-clockwise rotation about X axis is negative rotation in Rhino
+    # Rotate 90 degrees counter-clockwise about Y axis
+    # Counter-clockwise rotation about Y axis is negative rotation in Rhino
     center_point = [0, 0, 0]  # Origin
-    axis_vector = [1, 0, 0]   # x axis
-    angle = 90  # 90 degrees for counter-clockwise
+    axis_vector = [1, 0, 0]   # Y axis
+    angle = 90  # -90 degrees for counter-clockwise
     
     print("Rotating objects 90 degrees counter-clockwise about Y axis...")
     rs.RotateObjects(all_objects, center_point, angle, axis_vector)
@@ -78,11 +78,12 @@ def fbx_to_obj_converter():
 
 def fbx_to_obj_batch_converter():
     """
-    Batch version that processes multiple FBX files from a folder
+    Batch version that searches for LOD400 folders and processes FBX files within them
+    Creates subfolders in output directory matching model names
     """
     
-    # Get input folder containing FBX files
-    input_folder = rs.BrowseForFolder("Select folder containing FBX files")
+    # Get input folder to search for LOD400 directories
+    input_folder = rs.BrowseForFolder("Select root folder to search for LOD400 directories")
     
     if not input_folder:
         print("No input folder selected. Operation cancelled.")
@@ -95,60 +96,94 @@ def fbx_to_obj_batch_converter():
         print("No output folder selected. Operation cancelled.")
         return
     
-    # Find all FBX files in input folder
-    fbx_files = []
-    for file in os.listdir(input_folder):
-        if file.lower().endswith('.fbx'):
-            fbx_files.append(os.path.join(input_folder, file))
+    # Find all LOD400 folders recursively
+    lod400_folders = []
+    print("Searching for LOD400 folders...")
     
-    if not fbx_files:
-        print("No FBX files found in the selected folder.")
+    for root, dirs, files in os.walk(input_folder):
+        for dir_name in dirs:
+            if dir_name == "LOD400":
+                lod400_path = os.path.join(root, dir_name)
+                lod400_folders.append(lod400_path)
+                print("Found LOD400 folder: {}".format(lod400_path))
+    
+    if not lod400_folders:
+        print("No LOD400 folders found in the directory tree.")
         return
     
-    print("Found {} FBX files to process".format(len(fbx_files)))
+    print("Found {} LOD400 folders to process".format(len(lod400_folders)))
     
-    # Process each FBX file
-    for i, fbx_file in enumerate(fbx_files):
-        print("\nProcessing file {} of {}: {}".format(i + 1, len(fbx_files), os.path.basename(fbx_file)))
+    total_processed = 0
+    
+    # Process each LOD400 folder
+    for lod_folder in lod400_folders:
+        print("\nProcessing LOD400 folder: {}".format(lod_folder))
         
-        # Clear the document
-        rs.Command("_SelAll")
-        rs.Command("_Delete")
+        # Find FBX files in this LOD400 folder
+        fbx_files = []
+        for file in os.listdir(lod_folder):
+            if file.lower().endswith('.fbx'):
+                fbx_files.append(os.path.join(lod_folder, file))
         
-        # Import FBX file
-        import_command = '_-Import "{}" _Enter'.format(fbx_file)
-        rs.Command(import_command)
-        
-        # Check if anything was imported
-        all_objects = rs.AllObjects()
-        if not all_objects:
-            print("No objects were imported from {}".format(os.path.basename(fbx_file)))
+        if not fbx_files:
+            print("No FBX files found in {}".format(lod_folder))
             continue
         
-        # Select all imported objects
-        rs.SelectObjects(all_objects)
+        print("Found {} FBX files in this folder".format(len(fbx_files)))
         
-        # Rotate 90 degrees counter-clockwise about X axis
-        center_point = [0, 0, 0]
-        axis_vector = [1, 0, 0]
-        angle = 90
-        
-        rs.RotateObjects(all_objects, center_point, angle, axis_vector)
-        
-        # Create output filename
-        base_filename = os.path.splitext(os.path.basename(fbx_file))[0]
-        obj_filename = base_filename + ".obj"
-        obj_filepath = os.path.join(output_folder, obj_filename)
-        
-        # Export as OBJ
-        rs.SelectObjects(all_objects)
-        export_command = '_-Export "{}" _Enter'.format(obj_filepath)
-        rs.Command(export_command)
-        
-        print("Exported: {}".format(obj_filename))
+        # Process each FBX file in this LOD400 folder
+        for fbx_file in fbx_files:
+            print("Processing: {}".format(os.path.basename(fbx_file)))
+            
+            # Clear the document
+            rs.Command("_SelAll")
+            rs.Command("_Delete")
+            
+            # Import FBX file
+            import_command = '_-Import "{}" _Enter'.format(fbx_file)
+            rs.Command(import_command)
+            
+            # Check if anything was imported
+            all_objects = rs.AllObjects()
+            if not all_objects:
+                print("No objects were imported from {}".format(os.path.basename(fbx_file)))
+                continue
+            
+            # Select all imported objects
+            rs.SelectObjects(all_objects)
+            
+            # Rotate 90 degrees counter-clockwise about Y axis
+            center_point = [0, 0, 0]
+            axis_vector = [1, 0, 0]
+            angle = 90
+            
+            rs.RotateObjects(all_objects, center_point, angle, axis_vector)
+            
+            # Create output subfolder with model name (without extension)
+            base_filename = os.path.splitext(os.path.basename(fbx_file))[0]
+            model_output_folder = os.path.join(output_folder, base_filename)
+            
+            # Create the subfolder if it doesn't exist
+            if not os.path.exists(model_output_folder):
+                os.makedirs(model_output_folder)
+                print("Created output folder: {}".format(model_output_folder))
+            
+            # Create full output path
+            obj_filename = base_filename + ".obj"
+            obj_filepath = os.path.join(model_output_folder, obj_filename)
+            
+            # Export as OBJ
+            rs.SelectObjects(all_objects)
+            export_command = '_-Export "{}" _Enter'.format(obj_filepath)
+            rs.Command(export_command)
+            
+            print("Exported: {}".format(obj_filepath))
+            total_processed += 1
     
     rs.UnselectAllObjects()
-    print("\nBatch conversion completed! Processed {} files.".format(len(fbx_files)))
+    print("\nBatch conversion completed!")
+    print("Total LOD400 folders found: {}".format(len(lod400_folders)))
+    print("Total FBX files processed: {}".format(total_processed))
 
 # Main execution
 if __name__ == "__main__":
