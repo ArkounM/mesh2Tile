@@ -64,8 +64,8 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
     
     try:
         # === Step 1: Texture compression ===
-        print("  → Running texture compression...")
-        run_texture_compression(working_input, 5, model_output_dir, args.compress)
+        #print("  → Running texture compression...")
+        #run_texture_compression(working_input, 5, model_output_dir, args.compress)
         
         # === Step 2: Run adaptive Tiling on Mesh ===
         print("  → Generating tiles using octree format...")
@@ -78,7 +78,7 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         )
 
         # === Step 3: Update MTLs with new texture paths ===
-        print("  → Updating MTL texture paths for octree tiles...")
+        '''print("  → Updating MTL texture paths for octree tiles...")
         tiling_dir = os.path.join(model_output_dir, "temp", "tiles")
         texture_dir = os.path.join(model_output_dir, "temp", "texture")
         
@@ -86,7 +86,7 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         print(f"    Looking for textures in: {texture_dir}")
         
         update_mtl_texture_path_by_leaf(tiling_dir, texture_dir)
-        
+        '''
 
         # === Step 4: Bake textures to tiled OBJs ===
         print("  → Baking textures...")

@@ -29,7 +29,7 @@ USE_EXISTING_OBJECT = False  # Set to True to use selected object in scene
 EXISTING_OBJECT_NAME = ""   # Leave empty to use active object, or specify name
 
 # Script parameters
-TRIANGLE_THRESHOLD = 10000
+TRIANGLE_THRESHOLD = 20000
 MAX_TILE_LEVEL = 3  # Reduced for testing to prevent too many objects
 
 # Mesh cleanup parameters
@@ -67,9 +67,6 @@ def cleanup_mesh(obj):
     # Merge vertices by distance
     original_verts = len(obj.data.vertices)
     bpy.ops.mesh.remove_doubles(threshold=MERGE_DISTANCE)
-    
-    # Update mesh
-    bpy.ops.mesh.normals_make_consistent(inside=False)
     
     # Exit edit mode
     bpy.ops.object.mode_set(mode='OBJECT')
