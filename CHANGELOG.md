@@ -53,7 +53,7 @@ This release represents a complete rewrite of the mesh-to-3D-tiles pipeline with
 1. Update entry point: `python main.py` → `python mesh2tile.py`
 2. Old pipeline scripts archived in `_archive/` directory
 3. No changes to command-line arguments
-4. Node.js/npm no longer required
+4. Node.js/npm still required for tileset.json generation and gzip (3d-tiles-tools)
 
 #### Key Differences:
 - **Old**: Sequential LOD generation → tiling → conversion
@@ -73,7 +73,8 @@ Input OBJ → Adaptive Octree Tiling → Parallel Texture Baking → Parallel Bl
 ### Technical Details
 - Blender 4.5+ required
 - Python 3.8+ required
-- Removed Node.js dependency
+- Node.js/npm required for tileset.json generation and gzip (3d-tiles-tools)
+- Removed obj23dtiles npm dependency (replaced with Blender native)
 - Parallel processing: 4 workers for baking, 4 workers for conversion
 - Octree max depth: 3 levels (configurable)
 - Triangle threshold: 20,000 per tile (configurable)

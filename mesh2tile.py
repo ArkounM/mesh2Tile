@@ -12,9 +12,8 @@ if sys.platform == 'win32':
     sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
     sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
-from pipeline.flip_obj_axes import flip_obj_axes
 from pipeline.triggerBlender import run_blender_script, run_blender_bake
-from pipeline.obj2glb_pipeline import generate_tileset_json, gzip_output
+from pipeline.node_processes import generate_tileset_json, gzip_output
 from pipeline.blender_obj2glb import convert_obj_to_glb_blender
 from pipeline.createTilesetJson import restructure_tileset
 
@@ -81,38 +80,24 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
     
     # Check if output directory already exists
     if os.path.exists(model_output_dir):
-        print(f"  ⊗ Output directory already exists, skipping: {model_output_dir}")
-        return None  # Return None to indicate skipped (not success or failure)
-    
+        if args.force:
+            print(f"  ⚠ Output directory exists, removing due to --force: {model_output_dir}")
+            shutil.rmtree(model_output_dir)
+        else:
+            print(f"  ⊗ Output directory already exists, skipping: {model_output_dir}")
+            return None  # Return None to indicate skipped (not success or failure)
+
     os.makedirs(model_output_dir, exist_ok=True)
     
     print(f"Output directory: {model_output_dir}")
-    
-    # Create a working copy of the input file in case we need to flip axes
-    working_input = input_file
-    if args.flip_x or args.flip_y or args.flip_z:
-        print("  → Flipping OBJ axes...")
-        # Create a temporary copy to modify
-        temp_input = os.path.join(model_output_dir, f"temp_{input_basename}.obj")
-        shutil.copy2(input_file, temp_input)
-        
-        flip_obj_axes(
-            input_file=temp_input,
-            output_file=None,  # Overwrite in-place
-            flip_x=args.flip_x,
-            flip_y=args.flip_y,
-            flip_z=args.flip_z,
-            flip_normals=args.flip_normals
-        )
-        working_input = temp_input
-    
+
     try:
         
         # === Step 1: Run adaptive Tiling on Mesh ===
         print("  → Generating tiles using octree format...")
         tiling_dir = os.path.join(model_output_dir, "temp", "tiles")
         run_blender_script(
-            input_path=working_input,
+            input_path=input_file,
             output_dir=tiling_dir,
             blender_exe=blender_config['exe'],
             script_path=blender_config['adaptive_tiling_script']
@@ -192,14 +177,13 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         if not args.temp and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
         
-        # Clean up temporary input file if we created one
-        if working_input != input_file and os.path.exists(working_input):
-            os.remove(working_input)
-        
         # === Step 5: Generate and restructure tileset.json ===
         print("  → Generating tileset.json...")
         tileset_path = os.path.join(model_output_dir, "tileset.json")
-        generate_tileset_json(model_output_dir)
+        generate_tileset_json(model_output_dir,
+                            longitude=args.longitude,
+                            latitude=args.latitude,
+                            height=args.height)
         restructure_tileset(tileset_path, tileset_path)
         
         # === Step 6: Gzip the final output if --gzip is enabled ===
@@ -226,18 +210,23 @@ def main():
     parser.add_argument("--lods", "-l", type=int, default=3, help="Number of LODs to generate (default: 3)")
     parser.add_argument("--gzip", action="store_true", help="Enable gzip compression for output")
     parser.add_argument("--temp", action="store_true", help="Preserve the temp folder after processing")
-    parser.add_argument("--flip-x", action="store_true", help="Flip X axis of input OBJ")
-    parser.add_argument("--flip-y", action="store_true", help="Flip Y axis of input OBJ")
-    parser.add_argument("--flip-z", action="store_true", help="Flip Z axis of input OBJ")
-    parser.add_argument("--flip-normals", action="store_true", help="Flip normals as well")
+    parser.add_argument("--force", action="store_true", help="Force overwrite if output directory already exists")
     parser.add_argument("-c", "--compress", type=int, default=0, help="Texture compression level (Default 0: none, 1: low, 2: medium, 3: high)")
     parser.add_argument("--continue-on-error", action="store_true", help="Continue processing other files if one fails")
     
     # Parallelization options
-    parser.add_argument("--max-bake-workers", type=int, default=None, 
+    parser.add_argument("--max-bake-workers", type=int, default=None,
                        help="Maximum parallel Blender instances for baking (default: CPU cores / 2, max 4 for GPU)")
     parser.add_argument("--max-conversion-workers", type=int, default=None,
                        help="Maximum parallel workers for GLB conversion (default: CPU cores)")
+
+    # Geolocation options
+    parser.add_argument("--longitude", type=str, default="-75.703833",
+                       help="Longitude in degrees (default: -75.703833)")
+    parser.add_argument("--latitude", type=str, default="45.417139",
+                       help="Latitude in degrees (default: 45.417139)")
+    parser.add_argument("--height", type=str, default="77.572",
+                       help="Height in meters (default: 77.572)")
 
     args = parser.parse_args()
     

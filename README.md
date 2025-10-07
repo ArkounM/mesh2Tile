@@ -63,14 +63,14 @@ python mesh2tile.py --input input.obj --output output/ --temp
 | `--lods` | `-l` | Number of LOD levels to generate | 3 |
 | `--gzip` | - | Enable gzip compression | False |
 | `--temp` | - | Preserve temp folder after processing | False |
-| `--flip-x` | - | Flip X axis of input OBJ | False |
-| `--flip-y` | - | Flip Y axis of input OBJ | False |
-| `--flip-z` | - | Flip Z axis of input OBJ | False |
-| `--flip-normals` | - | Flip normals when flipping axes | False |
+| `--force` | - | Force overwrite existing output directory | False |
 | `--compress` | `-c` | Texture compression level (0-3) | 0 |
 | `--continue-on-error` | - | Continue processing on file failure | False |
 | `--max-bake-workers` | - | Parallel baking workers | CPU/2 (max 4) |
 | `--max-conversion-workers` | - | Parallel conversion workers | CPU/2 (max 4) |
+| `--longitude` | - | Longitude in degrees for tileset positioning | -75.703833 |
+| `--latitude` | - | Latitude in degrees for tileset positioning | 45.417139 |
+| `--height` | - | Height in meters for tileset positioning | 77.572 |
 
 ## Output Structure
 
@@ -95,12 +95,21 @@ output_directory/
 
 ### Software Dependencies
 - **Python**: 3.8+ (3.11+ recommended)
-- **Blender**: 4.5+ (update path in `mesh2tile.py` line 267 if needed)
-- **Node.js**: Not required (removed in v2.0)
+- **Blender**: 4.4+ (update path in `mesh2tile.py` line 267 if needed)
+- **Node.js**: Required for tileset.json generation and gzip compression
+- **npm**: Required for 3d-tiles-tools package
 
 ### Python Packages
 ```bash
 pip install Pillow
+```
+
+### Node.js Packages
+The pipeline uses the `3d-tiles-tools` npm package for tileset.json generation and optional gzip compression:
+```bash
+# No installation needed - npx will automatically download when first used
+# The pipeline calls: npx 3d-tiles-tools createTilesetJson
+# And optionally: npx 3d-tiles-tools gzip
 ```
 
 ### System Requirements
@@ -159,8 +168,8 @@ Edit `BlenderScripts/adaptiveTiling.py` to adjust:
 - `triggerBlender.py` - Blender script execution wrapper
 - `blender_obj2glb.py` - Blender-based GLB conversion
 - `flip_obj_axes.py` - Axis transformation utilities
-- `createTilesetJson.py` - Cesium tileset manifest generation
-- `obj2glb_pipeline.py` - Gzip compression and utilities
+- `createTilesetJson.py` - Cesium tileset manifest restructuring
+- `node_processes.py` - Node.js 3d-tiles-tools integration (tileset.json generation and gzip)
 
 **Blender Scripts** (`BlenderScripts/`)
 - `adaptiveTiling.py` - Adaptive octree spatial tiling
