@@ -65,14 +65,15 @@ def setup_bake_settings():
     bpy.context.scene.render.bake.use_pass_color = True
     bpy.context.scene.render.bake.use_selected_to_active = True
     bpy.context.scene.render.bake.cage_extrusion = 0.1
-    bpy.context.scene.render.bake.margin = 32  # Increased margin to prevent seams (32 pixels)
+    bpy.context.scene.render.bake.margin = 16
     
     # GPU-optimized settings
     bpy.context.scene.cycles.samples = 128  # Reasonable sample count for baking
     bpy.context.scene.cycles.use_denoising = False  # Disable denoising for baking
     
-    # Note: tile_x and tile_y were removed in Blender 2.8+
-    # Modern Blender uses adaptive sampling and doesn't need manual tile settings
+    # Memory management
+    bpy.context.scene.render.tile_x = 512
+    bpy.context.scene.render.tile_y = 512
     
     print("Bake settings configured")
 
@@ -157,6 +158,15 @@ def create_baked_material(obj, texture_name, width, height):
     
     return img
 
+def setup_bake_settings():
+    """Configure bake settings"""
+    bpy.context.scene.render.bake.use_pass_direct = False
+    bpy.context.scene.render.bake.use_pass_indirect = False
+    bpy.context.scene.render.bake.use_pass_color = True
+    bpy.context.scene.render.bake.use_selected_to_active = True
+    bpy.context.scene.render.bake.cage_extrusion = 0.1
+    bpy.context.scene.render.bake.margin = 16
+
 def process_obj_file(obj_path, output_dir):
     """Process a single OBJ file"""
     print(f"Processing: {obj_path}")
@@ -190,44 +200,18 @@ def process_obj_file(obj_path, output_dir):
     
     print(f"Baked object name: {baked_obj.name}")
     
-    # Ensure we're in Object mode before entering Edit mode
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
-    # Make sure the baked object is selected and active
-    bpy.context.view_layer.objects.active = baked_obj
-    baked_obj.select_set(True)
-    
-    # Enter edit mode for UV unwrapping
-    bpy.ops.object.mode_set(mode='EDIT')
-    
-    # Select all faces for UV unwrapping
-    bpy.ops.mesh.select_all(action='SELECT')
-    
-    # Smart UV unwrap the object with padding to prevent seams
-    bpy.ops.uv.smart_project(
-        angle_limit=1.15192, 
-        margin_method='SCALED', 
-        rotate_method='AXIS_ALIGNED_Y', 
-        island_margin=0.04,  # Increased margin to prevent seams (2% of texture space)
-        area_weight=0.0, 
-        correct_aspect=True, 
-        scale_to_bounds=False
-    )
-    
-    print("UV unwrapping completed")
-    
-    # Return to Object mode
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
     # Create baked material
     texture_name = f"{original_name}_baked_mat"
-    baked_image = create_baked_material(baked_obj, texture_name, 1024, 1024)
+    baked_image = create_baked_material(baked_obj, texture_name, tex_width, tex_height)
     
     # Select objects for baking (original first, then baked as active)
     bpy.ops.object.select_all(action='DESELECT')
     original_obj.select_set(True)
     baked_obj.select_set(True)
     bpy.context.view_layer.objects.active = baked_obj
+    
+    # Ensure we're in Object mode
+    bpy.ops.object.mode_set(mode='OBJECT')
     
     # Bake the texture
     print("Starting bake...")
@@ -336,3 +320,5 @@ if __name__ == "__main__":
     output_directory = args.output
 
     bake_textures_to_tiles(input_directory, output_directory)
+
+

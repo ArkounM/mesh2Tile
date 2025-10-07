@@ -20,18 +20,14 @@ def convert_obj_to_glb(input_dir, output_dir):
                 "-i", input_obj_path, "-b"
             ], check=True)
 
-            # Move resulting .glb to output and remove "_decimated" from filename
+            # Move resulting .glb to output
             for file in os.listdir(os.path.dirname(input_obj_path)):
                 if file.lower().endswith(".glb"):
                     src = os.path.join(os.path.dirname(input_obj_path), file)
-                    
-                    # Remove "_decimated" from the filename
-                    clean_filename = file.replace("_decimated", "")
-                    
-                    dst = os.path.join(output_dir, clean_filename)
+                    dst = os.path.join(output_dir, file)
                     if os.path.abspath(src) != os.path.abspath(dst):
                         os.replace(src, dst)
-                        print(f"✅ Converted: {file} → {clean_filename}")
+                        print(f"✅ Converted: {file}")
 
         except subprocess.CalledProcessError:
             print(f"❌ Failed to convert {file_name} — skipping (non-zero exit code)")
@@ -59,3 +55,4 @@ def gzip_output(output_path):
         "-o", output_path,
         "-f",
     ], check=True)
+    
