@@ -13,8 +13,6 @@ if sys.platform == 'win32':
     sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 from pipeline.flip_obj_axes import flip_obj_axes
-from pipeline.compress_texture import run_texture_compression
-from pipeline.assignTextureToLod import update_mtl_texture_path_by_leaf
 from pipeline.triggerBlender import run_blender_script, run_blender_bake
 from pipeline.obj2glb_pipeline import generate_tileset_json, gzip_output
 from pipeline.blender_obj2glb import convert_obj_to_glb_blender
@@ -109,11 +107,8 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         working_input = temp_input
     
     try:
-        # === Step 1: Texture compression ===
-        #print("  → Running texture compression...")
-        #run_texture_compression(working_input, 5, model_output_dir, args.compress)
         
-        # === Step 2: Run adaptive Tiling on Mesh ===
+        # === Step 1: Run adaptive Tiling on Mesh ===
         print("  → Generating tiles using octree format...")
         tiling_dir = os.path.join(model_output_dir, "temp", "tiles")
         run_blender_script(
@@ -123,18 +118,7 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
             script_path=blender_config['adaptive_tiling_script']
         )
 
-        # === Step 3: Update MTLs with new texture paths ===
-        '''print("  → Updating MTL texture paths for octree tiles...")
-        tiling_dir = os.path.join(model_output_dir, "temp", "tiles")
-        texture_dir = os.path.join(model_output_dir, "temp", "texture")
-        
-        print(f"    Scanning tile folders in: {tiling_dir}")
-        print(f"    Looking for textures in: {texture_dir}")
-        
-        update_mtl_texture_path_by_leaf(tiling_dir, texture_dir)
-        '''
-
-        # === Step 4: Bake textures to tiled OBJs (PARALLELIZED) ===
+        # === Step 2: Bake textures to tiled OBJs (PARALLELIZED) ===
         print("  → Baking textures (parallel processing)...")
         
         # Collect all LOD folders that need baking
@@ -169,7 +153,7 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         else:
             print("    No LOD folders found for baking")
         
-        # === Step 5: Convert tiles to GLB + Generate tilesets (PARALLELIZED) ===
+        # === Step 3: Convert tiles to GLB + Generate tilesets (PARALLELIZED) ===
         print("  → Converting to GLB and generating tilesets (parallel processing)...")
         
         # Collect all baked LOD folders for GLB conversion
@@ -203,7 +187,7 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         else:
             print("    No baked LOD folders found for conversion")
         
-        # === Step 6: Clean up temp directory unless --temp is used ===
+        # === Step 4: Clean up temp directory unless --temp is used ===
         temp_dir = os.path.join(model_output_dir, "temp")
         if not args.temp and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
@@ -212,13 +196,13 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         if working_input != input_file and os.path.exists(working_input):
             os.remove(working_input)
         
-        # === Step 7: Generate and restructure tileset.json ===
+        # === Step 5: Generate and restructure tileset.json ===
         print("  → Generating tileset.json...")
         tileset_path = os.path.join(model_output_dir, "tileset.json")
         generate_tileset_json(model_output_dir)
         restructure_tileset(tileset_path, tileset_path)
         
-        # === Step 8: Gzip the final output if --gzip is enabled ===
+        # === Step 6: Gzip the final output if --gzip is enabled ===
         if args.gzip:
             print("  → Applying gzip compression...")
             gzip_output(model_output_dir)
