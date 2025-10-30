@@ -4,7 +4,7 @@ High-performance OBJ to Cesium 3D Tiles converter with adaptive octree tiling an
 
 ## Overview
 
-This pipeline automates the conversion of OBJ meshes into optimized 3D Tiles compatible with Cesium for streaming in Unreal Engine. The v2.0 rewrite features intelligent adaptive tiling, parallel processing, and native Blender-based GLB export.
+This pipeline automates the conversion of OBJ meshes into optimized 3D Tiles compatible with Cesium for streaming in Unreal Engine. The v2.0 update features intelligent adaptive tiling, parallel processing, and native Blender-based GLB export.
 
 ### Key Features
 
@@ -14,7 +14,6 @@ This pipeline automates the conversion of OBJ meshes into optimized 3D Tiles com
 - **Automatic Texture Baking**: Per-tile UV unwrapping and texture generation
 - **Mesh Optimization**: Non-manifold edge removal and aggressive decimation
 - **Batch Processing**: Process entire directories of OBJ files
-- **93% File Size Reduction**: Optimized output compared to legacy pipeline
 
 ## Pipeline Workflow
 
@@ -99,11 +98,6 @@ output_directory/
 - **Node.js**: Required for tileset.json generation and gzip compression
 - **npm**: Required for 3d-tiles-tools package
 
-### Python Packages
-```bash
-pip install Pillow
-```
-
 ### Node.js Packages
 The pipeline uses the `3d-tiles-tools` npm package for tileset.json generation and optional gzip compression:
 ```bash
@@ -147,7 +141,6 @@ Edit `BlenderScripts/adaptiveTiling.py` to adjust:
 - **Processing Time**: ~1.5 hours
 - **LOD Levels**: 4 (0-3)
 - **Tiles Generated**: 462
-- **File Reduction**: 93% compared to legacy pipeline
 
 ### Optimization Tips
 1. Use `--gzip` for web delivery (additional 50-70% size reduction)
@@ -188,7 +181,6 @@ Edit `BlenderScripts/adaptiveTiling.py` to adjust:
 - **GLB Export**: obj23dtiles (npm) → Blender native
 - **Processing**: Serial → Parallel (4 workers)
 - **Mesh Cleanup**: Added non-manifold edge removal
-- **File Sizes**: 93% reduction via better decimation and texture optimization
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
 
@@ -204,7 +196,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
 - Process smaller batches
 
 **"GLB files are empty/corrupt"**
-- Check Blender version is 4.5+
+- Check Blender version is 4.4+
 - Verify OBJ has valid UVs and textures
 
 **"Process hangs during conversion"**
