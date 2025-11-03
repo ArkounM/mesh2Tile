@@ -383,11 +383,11 @@ def main():
     # Set default worker counts if not specified
     if args.max_bake_workers is None:
         # Conservative default: use half CPU cores, max 4 (good for GPU baking)
-        args.max_bake_workers = min(4, max(1, multiprocessing.cpu_count() // 2))
+        args.max_bake_workers = min(8, max(1, multiprocessing.cpu_count() // 2))
     
     if args.max_conversion_workers is None:
         # GLB conversion using Blender can use moderate parallelism
-        args.max_conversion_workers = min(4, max(1, multiprocessing.cpu_count() // 2))
+        args.max_conversion_workers = min(8, max(1, multiprocessing.cpu_count() // 2))
 
     # Validate input directory
     input_dir = os.path.abspath(args.input)
@@ -401,7 +401,7 @@ def main():
     
     # === Blender config ===
     blender_config = {
-        'exe': "C:/Program Files/Blender Foundation/Blender 4.5/blender.exe",
+        'exe': "C:/Program Files/Blender Foundation/Blender 4.4/blender.exe",
         'lod_script': "./BlenderScripts/lodOBJ.py",
         'tiling_script': "./BlenderScripts/tileOBJ.py",
         'baking_script': "./BlenderScripts/bakeTextures.py",
