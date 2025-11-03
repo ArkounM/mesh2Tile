@@ -17,8 +17,10 @@ if "--" in sys.argv:
     if len(argv) >= 2:
         TEST_OBJ_PATH = argv[0]
         TEST_OUTPUT_DIR = argv[1]
+        # Optional third argument for max LOD level
+        MAX_TILE_LEVEL = int(argv[2]) if len(argv) >= 3 else 3
     else:
-        print("❌ Error: Expected 2 arguments after '--': input_path output_dir")
+        print("❌ Error: Expected at least 2 arguments after '--': input_path output_dir [max_lod]")
         sys.exit(1)
 else:
     print("❌ Error: Missing '--' in arguments. Blender CLI should use '--' before script args.")
@@ -30,7 +32,7 @@ EXISTING_OBJECT_NAME = ""   # Leave empty to use active object, or specify name
 
 # Script parameters
 TRIANGLE_THRESHOLD = 20000
-MAX_TILE_LEVEL = 3  # Reduced for testing to prevent too many objects
+# MAX_TILE_LEVEL is now set from command-line arguments (default: 3)
 
 # Mesh cleanup parameters
 MERGE_DISTANCE = 0.001  # Distance threshold for merging vertices

@@ -56,24 +56,25 @@ def setup_cycles_gpu():
     return True
 
 def setup_bake_settings():
-    """Configure bake settings optimized for GPU"""
+    """Configure bake settings optimized for speed"""
     print("Configuring bake settings...")
-    
+
     # Basic bake settings
     bpy.context.scene.render.bake.use_pass_direct = False
     bpy.context.scene.render.bake.use_pass_indirect = False
     bpy.context.scene.render.bake.use_pass_color = True
     bpy.context.scene.render.bake.use_selected_to_active = True
     bpy.context.scene.render.bake.cage_extrusion = 0.1
-    bpy.context.scene.render.bake.margin = 32  # Increased margin to prevent seams (32 pixels)
-    
-    # GPU-optimized settings
-    bpy.context.scene.cycles.samples = 128  # Reasonable sample count for baking
-    bpy.context.scene.cycles.use_denoising = False  # Disable denoising for baking
-    
+    bpy.context.scene.render.bake.margin = 8  # Reduced from 32 for faster baking
+
+    # Speed-optimized settings (reduced samples with denoising compensation)
+    bpy.context.scene.cycles.samples = 32  # Reduced from 128 for 4x faster baking
+    bpy.context.scene.cycles.use_denoising = True  # Enable to compensate for lower samples
+    bpy.context.scene.cycles.denoiser = 'OPENIMAGEDENOISE'
+
     # Note: tile_x and tile_y were removed in Blender 2.8+
     # Modern Blender uses adaptive sampling and doesn't need manual tile settings
-    
+
     print("Bake settings configured")
 
 def verify_gpu_usage():
@@ -158,12 +159,13 @@ def create_baked_material(obj, texture_name, width, height):
     return img
 
 def process_obj_file(obj_path, output_dir):
-    """Process a single OBJ file"""
+    """Process a single OBJ file - optimized for batch processing"""
     print(f"Processing: {obj_path}")
-    
-    # Clear scene
-    clear_scene()
-    
+
+    # Clear only objects, not scene settings (faster than full clear)
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete(use_global=False, confirm=False)
+
     # Import OBJ
     bpy.ops.wm.obj_import(filepath=obj_path)
     
@@ -264,6 +266,9 @@ def process_obj_file(obj_path, output_dir):
         path_mode='COPY'  # This will copy textures and create .mtl file
     )
     print(f"Exported baked object: {export_path}")
+
+    # Clear unused data to prevent memory buildup during batch processing
+    bpy.ops.outliner.orphans_purge(do_recursive=True)
 
 def bake_textures_to_tiles(input_directory, output_directory):
     """Main function to process all OBJ files in the input directory"""

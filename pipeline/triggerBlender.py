@@ -2,29 +2,34 @@ import subprocess
 import os
 
 # This script calls a Blender Python script to split an OBJ file into LODS and then tiles them into chunks.
-def run_blender_script(input_path, output_dir, blender_exe, script_path):
+def run_blender_script(input_path, output_dir, blender_exe, script_path, extra_args=None):
 
     """
     Runs the Blender chunking script with given input and output paths.
-    
+
     Parameters:
     - input_path: str - Path to the input OBJ file
     - output_dir: str - Path to the directory where chunks will be saved
     - blender_exe: str - Path to Blender executable (e.g., "C:/Program Files/Blender Foundation/Blender 4.0/blender.exe")
     - script_path: str - Path to the Blender Python script
+    - extra_args: list - Optional list of additional arguments to pass to the script
     """
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input file not found: {input_path}")
-    
+
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Blender script not found: {script_path}")
-    
+
     command = [
         blender_exe,
         "--background",
         "--python", script_path,
         "--", input_path, output_dir
     ]
+
+    # Add any extra arguments
+    if extra_args:
+        command.extend(extra_args)
 
     print("Running Blender script...")
     result = subprocess.run(command, capture_output=True, text=True)
