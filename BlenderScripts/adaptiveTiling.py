@@ -19,8 +19,10 @@ if "--" in sys.argv:
         TEST_OUTPUT_DIR = argv[1]
         # Optional third argument for max LOD level
         MAX_TILE_LEVEL = int(argv[2]) if len(argv) >= 3 else 3
+        # Optional fourth argument for first-split-only mode (Phase 3 parallel processing)
+        FIRST_SPLIT_ONLY = (argv[3] == "--first-split-only") if len(argv) >= 4 else False
     else:
-        print("❌ Error: Expected at least 2 arguments after '--': input_path output_dir [max_lod]")
+        print("❌ Error: Expected at least 2 arguments after '--': input_path output_dir [max_lod] [--first-split-only]")
         sys.exit(1)
 else:
     print("❌ Error: Missing '--' in arguments. Blender CLI should use '--' before script args.")
@@ -567,10 +569,76 @@ def run_adaptive_tiling_test():
     print("CLEANING UP MESH")
     print("=" * 30)
     cleanup_mesh(obj)
-    
-    # Start adaptive processing
-    process_object_adaptive(obj, tile_level=0, ix=0, iy=0, iz=0)
-    
+
+    # Check if this is first-split-only mode (for parallel processing)
+    if FIRST_SPLIT_ONLY:
+        print("\n" + "=" * 50)
+        print("FIRST SPLIT ONLY MODE (Phase 3 Parallel)")
+        print("=" * 50)
+        print("Performing initial octree split and exporting chunks...")
+
+        # CRITICAL: Create root tile (TileLevel_0) before splitting
+        # This is the decimated version of the entire model
+        triangle_count = get_triangle_count(obj)
+
+        if triangle_count > TRIANGLE_THRESHOLD:
+            print(f"\nCreating root tile (TileLevel_0)...")
+            print(f"  Original triangle count: {triangle_count}")
+
+            # Create decimated root tile
+            decimated_name = "0_0_0_0_decimated"
+            decimated_obj = duplicate_object(obj, decimated_name)
+            decimate_object(decimated_obj, TRIANGLE_THRESHOLD)
+            export_object_test(decimated_obj, TEST_OUTPUT_DIR)
+
+            # Clean up decimated object (we've exported it)
+            bpy.data.objects.remove(decimated_obj, do_unlink=True)
+            print(f"  ✓ Root tile created and exported to TileLevel_0")
+        else:
+            print(f"\nModel has {triangle_count} triangles (≤ {TRIANGLE_THRESHOLD})")
+            print("No tiling needed - exporting as single tile")
+            export_object_test(obj, TEST_OUTPUT_DIR)
+            # Don't proceed with splitting if model is already small enough
+            return
+
+        # Create first-level chunks directory
+        chunks_temp_dir = os.path.join(TEST_OUTPUT_DIR, "_parallel_chunks")
+        os.makedirs(chunks_temp_dir, exist_ok=True)
+
+        # Perform first split
+        print(f"\nSplitting into first-level chunks...")
+        chunks = bisect_object_octree(obj, tile_level=1, ix=0, iy=0, iz=0)
+
+        print(f"\nExporting {len(chunks)} first-level chunks for parallel processing...")
+
+        # Export each chunk as OBJ for worker processes
+        chunk_files = []
+        for chunk in chunks:
+            chunk_file = os.path.join(chunks_temp_dir, f"{chunk.name}.obj")
+
+            bpy.ops.object.select_all(action='DESELECT')
+            chunk.select_set(True)
+            bpy.context.view_layer.objects.active = chunk
+
+            bpy.ops.wm.obj_export(
+                filepath=chunk_file,
+                export_selected_objects=True,
+                export_materials=True,
+                export_uv=True,
+                apply_modifiers=False,
+                global_scale=1.0
+            )
+
+            chunk_files.append(chunk_file)
+            print(f"  Exported: {chunk.name} → {chunk_file}")
+
+        print(f"\nFirst split complete! {len(chunk_files)} chunks ready for parallel workers")
+        print(f"Chunk files located in: {chunks_temp_dir}")
+
+    else:
+        # Normal sequential processing
+        process_object_adaptive(obj, tile_level=0, ix=0, iy=0, iz=0)
+
     print("\n" + "=" * 50)
     print("ADAPTIVE TILING TEST COMPLETE")
     print("=" * 50)
@@ -579,10 +647,11 @@ def run_adaptive_tiling_test():
     print(f"Check the 3D viewport to see the generated tiles")
     print(f"Objects in scene: {len([o for o in bpy.data.objects if o.type == 'MESH'])}")
     print(f"Output organized in folders by tile level in: {TEST_OUTPUT_DIR}")
-    print()
-    print("Performance optimizations active:")
-    print(f"  - Triangle count cache hits: {len(triangle_count_cache)} cached values")
-    print(f"  - Directory creation optimizations: {len(created_directories)} folders cached")
+    if not FIRST_SPLIT_ONLY:
+        print()
+        print("Performance optimizations active:")
+        print(f"  - Triangle count cache hits: {len(triangle_count_cache)} cached values")
+        print(f"  - Directory creation optimizations: {len(created_directories)} folders cached")
 
 # ===========================================
 # RUN THE TEST

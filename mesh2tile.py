@@ -106,6 +106,35 @@ def convert_lod_to_glb(args):
         return lod, False, str(e)
 
 
+def process_chunk_worker(task, blender_config):
+    """Worker function for parallel processing of octree chunks (Phase 3)"""
+    chunk_file, output_dir, tile_level, ix, iy, iz, max_lod = task
+
+    try:
+        # Run Blender worker script on this chunk
+        cmd = [
+            blender_config['exe'],
+            "--background",
+            "--python", blender_config['adaptive_tiling_worker_script'],
+            "--",
+            chunk_file,      # Chunk OBJ file
+            output_dir,      # Output directory
+            str(tile_level),  # Starting tile level
+            str(ix),          # X index
+            str(iy),          # Y index
+            str(iz),          # Z index
+            str(max_lod)      # Max LOD level
+        ]
+
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return True, None
+
+    except subprocess.CalledProcessError as e:
+        return False, f"Exit code {e.returncode}"
+    except Exception as e:
+        return False, str(e)
+
+
 def process_single_obj(input_file, output_base_dir, args, blender_config):
     """
     Process a single OBJ file through the entire pipeline with parallelization.
@@ -143,13 +172,96 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         print("  → Generating tiles using octree format...")
         step1_start = time.time()
         tiling_dir = os.path.join(model_output_dir, "temp", "tiles")
-        run_blender_script(
-            input_path=input_file,
-            output_dir=tiling_dir,
-            blender_exe=blender_config['exe'],
-            script_path=blender_config['adaptive_tiling_script'],
-            extra_args=[str(args.lods)]  # Pass max LOD level to Blender script
-        )
+
+        if args.parallel_tiling:
+            # PHASE 3: Parallel tiling mode
+            print("    🔀 Parallel tiling enabled")
+
+            # Step 1a: Perform first split to create chunks
+            print("    Step 1a: Performing initial octree split...")
+            run_blender_script(
+                input_path=input_file,
+                output_dir=tiling_dir,
+                blender_exe=blender_config['exe'],
+                script_path=blender_config['adaptive_tiling_script'],
+                extra_args=[str(args.lods), "--first-split-only"]
+            )
+
+            # Find exported chunks
+            chunks_dir = os.path.join(tiling_dir, "_parallel_chunks")
+            chunk_files = glob.glob(os.path.join(chunks_dir, "*.obj"))
+
+            if not chunk_files:
+                print("    ⚠ Warning: No chunks found. Falling back to sequential processing.")
+                run_blender_script(
+                    input_path=input_file,
+                    output_dir=tiling_dir,
+                    blender_exe=blender_config['exe'],
+                    script_path=blender_config['adaptive_tiling_script'],
+                    extra_args=[str(args.lods)]
+                )
+            else:
+                print(f"    Step 1b: Processing {len(chunk_files)} chunks in parallel with {args.max_tiling_workers} workers...")
+
+                # Create worker tasks
+                worker_tasks = []
+                for chunk_file in chunk_files:
+                    # Parse chunk name to get indices (format: 1_x_y_z.obj)
+                    chunk_name = os.path.splitext(os.path.basename(chunk_file))[0]
+                    parts = chunk_name.split('_')
+                    if len(parts) >= 4:
+                        tile_level = int(parts[0])
+                        ix = int(parts[1])
+                        iy = int(parts[2])
+                        iz = int(parts[3])
+
+                        worker_tasks.append((chunk_file, tiling_dir, tile_level, ix, iy, iz, args.lods))
+
+                # Process chunks in parallel
+                completed_count = 0
+                failed_chunks = []
+
+                with ProcessPoolExecutor(max_workers=args.max_tiling_workers) as executor:
+                    futures = {executor.submit(process_chunk_worker, task, blender_config): task for task in worker_tasks}
+
+                    for future in as_completed(futures):
+                        task = futures[future]
+                        chunk_file = task[0]
+                        chunk_name = os.path.basename(chunk_file)
+
+                        try:
+                            success, error = future.result()
+                            completed_count += 1
+
+                            if success:
+                                print(f"    ✓ [{completed_count}/{len(worker_tasks)}] Processed chunk: {chunk_name}")
+                            else:
+                                print(f"    ✗ [{completed_count}/{len(worker_tasks)}] Failed chunk {chunk_name}: {error}")
+                                failed_chunks.append(chunk_name)
+                        except Exception as e:
+                            completed_count += 1
+                            print(f"    ✗ [{completed_count}/{len(worker_tasks)}] Exception processing {chunk_name}: {e}")
+                            failed_chunks.append(chunk_name)
+
+                if failed_chunks:
+                    print(f"    ⚠ Warning: {len(failed_chunks)} chunks failed to process")
+                else:
+                    print(f"    ✓ All {len(worker_tasks)} chunks processed successfully")
+
+                # Clean up temporary chunk files
+                shutil.rmtree(chunks_dir)
+                print(f"    Cleaned up temporary chunks directory")
+
+        else:
+            # Sequential processing (default)
+            run_blender_script(
+                input_path=input_file,
+                output_dir=tiling_dir,
+                blender_exe=blender_config['exe'],
+                script_path=blender_config['adaptive_tiling_script'],
+                extra_args=[str(args.lods)]
+            )
+
         phase_times['Step 1: Adaptive Tiling'] = time.time() - step1_start
         print(f"    ⏱ Tiling completed in {phase_times['Step 1: Adaptive Tiling']:.2f}s")
 
@@ -364,11 +476,15 @@ def main():
     
     # Parallelization options
     parser.add_argument("--max-bake-workers", type=int, default=None,
-                       help="Maximum parallel Blender instances for baking (default: CPU cores / 2, max 4 for GPU)")
+                       help="Maximum parallel Blender instances for baking (default: CPU cores / 2, max 8)")
     parser.add_argument("--max-conversion-workers", type=int, default=None,
                        help="Maximum parallel workers for GLB conversion (default: CPU cores)")
     parser.add_argument("--batch-bake", action="store_true",
                        help="Use batch baking mode (process all tiles per LOD in single Blender session). Faster startup but sequential tile processing.")
+    parser.add_argument("--parallel-tiling", action="store_true",
+                       help="Phase 3: Enable parallel octree tiling (process first-level chunks in parallel)")
+    parser.add_argument("--max-tiling-workers", type=int, default=None,
+                       help="Maximum parallel workers for tiling (default: 4, used with --parallel-tiling)")
 
     # Geolocation options
     parser.add_argument("--longitude", type=str, default="-75.703833",
@@ -382,8 +498,12 @@ def main():
     
     # Set default worker counts if not specified
     if args.max_bake_workers is None:
-        # Conservative default: use half CPU cores, max 4 (good for GPU baking)
+        # Conservative default: use half CPU cores, max 8 (good for GPU baking)
         args.max_bake_workers = min(8, max(1, multiprocessing.cpu_count() // 2))
+
+    if args.max_tiling_workers is None:
+        # Default: 4 workers for parallel tiling
+        args.max_tiling_workers = 4
     
     if args.max_conversion_workers is None:
         # GLB conversion using Blender can use moderate parallelism
@@ -407,6 +527,7 @@ def main():
         'baking_script': "./BlenderScripts/bakeTextures.py",
         'single_tile_bake_script': "./BlenderScripts/bakeSingleTile.py",
         'adaptive_tiling_script': "./BlenderScripts/adaptiveTiling.py",
+        'adaptive_tiling_worker_script': "./BlenderScripts/adaptiveTilingWorker.py",  # Phase 3
         'obj2glb_script': "./BlenderScripts/obj2glb.py"
     }
     
@@ -425,6 +546,11 @@ def main():
     print(f"\nParallelization settings:")
     print(f"  Max baking workers: {args.max_bake_workers}")
     print(f"  Max conversion workers: {args.max_conversion_workers}")
+    if args.parallel_tiling:
+        print(f"  Parallel tiling: ENABLED (Phase 3)")
+        print(f"  Max tiling workers: {args.max_tiling_workers}")
+    else:
+        print(f"  Parallel tiling: DISABLED (use --parallel-tiling to enable)")
     print(f"  Available CPU cores: {multiprocessing.cpu_count()}")
     
     # Process each OBJ file
