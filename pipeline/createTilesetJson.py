@@ -31,13 +31,13 @@ def get_geometric_error(level):
     if level == 0:
         return None  # root calculated separately
     elif level == 1:
-        return 0.5
+        return 1
     elif level == 2:
-        return 0.05
+        return 0.5
     elif level == 3:
-        return 0.005
+        return 0.05
     else:
-        return 0.005 / (2 ** (level - 3))
+        return 0.05 / (2 ** (level - 3))
 
 def build_hierarchy(current_level, parent_coords, tiles_by_level):
     next_level = current_level + 1

@@ -2,6 +2,7 @@ import bpy, bmesh
 from mathutils import Vector
 import os
 import sys
+import json
 
 # ===========================================
 # CONFIGURATION - MODIFY THESE PATHS FOR TESTING
@@ -38,6 +39,121 @@ TRIANGLE_THRESHOLD = 20000
 
 # Mesh cleanup parameters
 MERGE_DISTANCE = 0.001  # Distance threshold for merging vertices
+
+# ===========================================
+# TEXTURE METADATA GENERATION
+# ===========================================
+
+def detect_source_texture_resolution(obj):
+    """
+    Scan all materials on the object to find the largest texture.
+    Returns (width, height, total_pixels) or (1024, 1024, 1048576) as default.
+    """
+    max_width = 0
+    max_height = 0
+
+    if not obj.data.materials:
+        print("  No materials found - using default 1024x1024")
+        return 1024, 1024, 1048576
+
+    for mat in obj.data.materials:
+        if not mat or not mat.use_nodes:
+            continue
+
+        # Search for image texture nodes
+        for node in mat.node_tree.nodes:
+            if node.type == 'TEX_IMAGE' and node.image:
+                width, height = node.image.size
+                if width * height > max_width * max_height:
+                    max_width = width
+                    max_height = height
+
+    if max_width == 0 or max_height == 0:
+        print("  No textures found in materials - using default 1024x1024")
+        return 1024, 1024, 1048576
+
+    total_pixels = max_width * max_height
+    print(f"  Detected source texture: {max_width}x{max_height} ({total_pixels:,} pixels)")
+    return max_width, max_height, total_pixels
+
+def estimate_total_tiles_for_metadata(total_triangles, triangle_threshold):
+    """
+    Estimate the total number of tiles that will be generated based on mesh complexity.
+    Uses octree subdivision logic: each level creates up to 8 children.
+
+    Returns: (estimated_tiles, max_depth)
+    """
+    if total_triangles <= triangle_threshold:
+        return 1, 0
+
+    # Calculate how many levels of subdivision we'll need
+    current_triangles = total_triangles
+    max_depth = 0
+    estimated_tiles = 0
+
+    # Level 0: root tile (always 1)
+    estimated_tiles += 1
+
+    # Simulate subdivision
+    while current_triangles > triangle_threshold and max_depth < 10:  # Cap at 10 levels for safety
+        max_depth += 1
+        # Each subdivision creates up to 8 tiles at the next level
+        # Assume average of 6 non-empty octants (realistic for complex meshes)
+        tiles_at_level = min(8 ** max_depth, int(total_triangles / triangle_threshold))
+        estimated_tiles += tiles_at_level
+        current_triangles = current_triangles / 8  # Each octant gets ~1/8 of triangles
+
+    print(f"  Estimated {estimated_tiles} total tiles across {max_depth} levels")
+    return estimated_tiles, max_depth
+
+def generate_texture_metadata(obj, output_dir, triangle_threshold):
+    """
+    Generate and save texture metadata JSON file for adaptive texture sizing.
+    This metadata will be used by bakeSingleTile.py to determine texture sizes.
+    """
+    print("\n" + "=" * 50)
+    print("GENERATING TEXTURE METADATA")
+    print("=" * 50)
+
+    # Detect source texture resolution
+    width, height, total_pixels = detect_source_texture_resolution(obj)
+
+    # Get triangle count
+    total_triangles = get_triangle_count(obj)
+    print(f"  Total triangles: {total_triangles:,}")
+
+    # Estimate total tiles
+    estimated_tiles, max_depth = estimate_total_tiles_for_metadata(total_triangles, triangle_threshold)
+
+    # Create metadata dictionary
+    metadata = {
+        "source_texture_width": width,
+        "source_texture_height": height,
+        "source_texture_pixels": total_pixels,
+        "total_triangles": total_triangles,
+        "triangle_threshold": triangle_threshold,
+        "estimated_tiles": estimated_tiles,
+        "estimated_max_depth": max_depth,
+        "base_texture_size": 1024  # Base resolution for tiles
+    }
+
+    # Save to JSON file
+    metadata_path = os.path.join(output_dir, "texture_metadata.json")
+    os.makedirs(output_dir, exist_ok=True)
+
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"\n  Metadata saved to: {metadata_path}")
+    print(f"  Summary:")
+    print(f"    - Source texture: {width}x{height} ({total_pixels:,} pixels)")
+    print(f"    - Triangle count: {total_triangles:,}")
+    print(f"    - Estimated tiles: {estimated_tiles}")
+    print(f"    - Max depth: {max_depth}")
+    print(f"    - Base texture size: 1024x1024")
+    print("=" * 50 + "\n")
+
+    return metadata
 
 # ===========================================
 # ADAPTIVE TILING FUNCTIONS (Enhanced)
@@ -569,6 +685,9 @@ def run_adaptive_tiling_test():
     print("CLEANING UP MESH")
     print("=" * 30)
     cleanup_mesh(obj)
+
+    # GENERATE TEXTURE METADATA - For adaptive texture sizing
+    generate_texture_metadata(obj, TEST_OUTPUT_DIR, TRIANGLE_THRESHOLD)
 
     # Check if this is first-split-only mode (for parallel processing)
     if FIRST_SPLIT_ONLY:
