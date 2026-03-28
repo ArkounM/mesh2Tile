@@ -1,7 +1,22 @@
 import subprocess
 import os
+import shutil
 
-NODE_PATH = r"C:\Program Files\nodejs\npx.cmd"
+def _find_npx():
+    """Find npx executable, checking common locations."""
+    npx = shutil.which("npx")
+    if npx:
+        return npx
+    # Windows common paths
+    for path in [
+        r"C:\Program Files\nodejs\npx.cmd",
+        r"C:\nvm4w\nodejs\npx.cmd",
+    ]:
+        if os.path.exists(path):
+            return path
+    raise FileNotFoundError("npx not found. Install Node.js or set it in your PATH.")
+
+NODE_PATH = _find_npx()
 
 def generate_tileset_json(output_dir, longitude="-75.703833", latitude="45.417139", height="77.572"):
     """
@@ -19,7 +34,7 @@ def generate_tileset_json(output_dir, longitude="-75.703833", latitude="45.41713
 def gzip_output(output_path):
     print("Gzipping tiles...")
     subprocess.run([
-        r"C:\Program Files\nodejs\npx.cmd", "3d-tiles-tools", "gzip",
+        NODE_PATH, "3d-tiles-tools", "gzip",
         "-i", output_path,
         "-o", output_path,
         "-f",
