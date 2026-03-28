@@ -18,6 +18,7 @@ from pipeline.triggerBlender import run_blender_script, run_blender_bake
 from pipeline.node_processes import generate_tileset_json, gzip_output
 from pipeline.blender_obj2glb import convert_obj_to_glb_blender
 from pipeline.createTilesetJson import restructure_tileset
+from pipeline.obj_presplitter import presplit_if_needed, merge_tilesets, estimate_obj_triangles
 
 
 def find_obj_files(input_dir):
@@ -135,49 +136,25 @@ def process_chunk_worker(task, blender_config):
         return False, str(e)
 
 
-def process_single_obj(input_file, output_base_dir, args, blender_config):
+def _process_single_obj_core(input_file, model_output_dir, args, blender_config):
     """
-    Process a single OBJ file through the entire pipeline with parallelization.
+    Core pipeline: run Steps 1-6 (tiling, baking, GLB conversion, tileset
+    generation) on a single OBJ file whose output directory already exists.
+
+    Returns True on success, False on failure.
     """
-    print(f"\n{'='*60}")
-    print(f"Processing: {input_file}")
-    print(f"{'='*60}")
-    
-    # Get the base name of the input file (e.g., building_LOD400.obj → building_LOD400)
-    input_basename = os.path.splitext(os.path.basename(input_file))[0]
-    
-    # Create output directory for this specific model
-    model_output_dir = os.path.join(output_base_dir, input_basename)
-    
-    # Check if output directory already exists
-    if os.path.exists(model_output_dir):
-        if args.force:
-            print(f"  ⚠ Output directory exists, removing due to --force: {model_output_dir}")
-            shutil.rmtree(model_output_dir)
-        else:
-            print(f"  ⊗ Output directory already exists, skipping: {model_output_dir}")
-            return None  # Return None to indicate skipped (not success or failure)
-
-    os.makedirs(model_output_dir, exist_ok=True)
-    
-    print(f"Output directory: {model_output_dir}")
-
-    # Track timing for performance analysis
     pipeline_start_time = time.time()
     phase_times = {}
 
     try:
-
         # === Step 1: Run adaptive Tiling on Mesh ===
-        print("  → Generating tiles using octree format...")
+        print("  -> Generating tiles using octree format...")
         step1_start = time.time()
         tiling_dir = os.path.join(model_output_dir, "temp", "tiles")
 
         if args.parallel_tiling:
-            # PHASE 3: Parallel tiling mode
-            print("    🔀 Parallel tiling enabled")
+            print("    Parallel tiling enabled")
 
-            # Step 1a: Perform first split to create chunks
             print("    Step 1a: Performing initial octree split...")
             run_blender_script(
                 input_path=input_file,
@@ -187,12 +164,11 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
                 extra_args=[str(args.lods), "--first-split-only"]
             )
 
-            # Find exported chunks
             chunks_dir = os.path.join(tiling_dir, "_parallel_chunks")
             chunk_files = glob.glob(os.path.join(chunks_dir, "*.obj"))
 
             if not chunk_files:
-                print("    ⚠ Warning: No chunks found. Falling back to sequential processing.")
+                print("    Warning: No chunks found. Falling back to sequential processing.")
                 run_blender_script(
                     input_path=input_file,
                     output_dir=tiling_dir,
@@ -203,10 +179,8 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
             else:
                 print(f"    Step 1b: Processing {len(chunk_files)} chunks in parallel with {args.max_tiling_workers} workers...")
 
-                # Create worker tasks
                 worker_tasks = []
                 for chunk_file in chunk_files:
-                    # Parse chunk name to get indices (format: 1_x_y_z.obj)
                     chunk_name = os.path.splitext(os.path.basename(chunk_file))[0]
                     parts = chunk_name.split('_')
                     if len(parts) >= 4:
@@ -214,46 +188,38 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
                         ix = int(parts[1])
                         iy = int(parts[2])
                         iz = int(parts[3])
-
                         worker_tasks.append((chunk_file, tiling_dir, tile_level, ix, iy, iz, args.lods))
 
-                # Process chunks in parallel
                 completed_count = 0
                 failed_chunks = []
 
                 with ProcessPoolExecutor(max_workers=args.max_tiling_workers) as executor:
                     futures = {executor.submit(process_chunk_worker, task, blender_config): task for task in worker_tasks}
-
                     for future in as_completed(futures):
                         task = futures[future]
                         chunk_file = task[0]
                         chunk_name = os.path.basename(chunk_file)
-
                         try:
                             success, error = future.result()
                             completed_count += 1
-
                             if success:
-                                print(f"    ✓ [{completed_count}/{len(worker_tasks)}] Processed chunk: {chunk_name}")
+                                print(f"    [{completed_count}/{len(worker_tasks)}] Processed chunk: {chunk_name}")
                             else:
-                                print(f"    ✗ [{completed_count}/{len(worker_tasks)}] Failed chunk {chunk_name}: {error}")
+                                print(f"    [{completed_count}/{len(worker_tasks)}] Failed chunk {chunk_name}: {error}")
                                 failed_chunks.append(chunk_name)
                         except Exception as e:
                             completed_count += 1
-                            print(f"    ✗ [{completed_count}/{len(worker_tasks)}] Exception processing {chunk_name}: {e}")
+                            print(f"    [{completed_count}/{len(worker_tasks)}] Exception processing {chunk_name}: {e}")
                             failed_chunks.append(chunk_name)
 
                 if failed_chunks:
-                    print(f"    ⚠ Warning: {len(failed_chunks)} chunks failed to process")
+                    print(f"    Warning: {len(failed_chunks)} chunks failed to process")
                 else:
-                    print(f"    ✓ All {len(worker_tasks)} chunks processed successfully")
+                    print(f"    All {len(worker_tasks)} chunks processed successfully")
 
-                # Clean up temporary chunk files
                 shutil.rmtree(chunks_dir)
                 print(f"    Cleaned up temporary chunks directory")
-
         else:
-            # Sequential processing (default)
             run_blender_script(
                 input_path=input_file,
                 output_dir=tiling_dir,
@@ -263,21 +229,17 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
             )
 
         phase_times['Step 1: Adaptive Tiling'] = time.time() - step1_start
-        print(f"    ⏱ Tiling completed in {phase_times['Step 1: Adaptive Tiling']:.2f}s")
+        print(f"    Tiling completed in {phase_times['Step 1: Adaptive Tiling']:.2f}s")
 
         # === Step 2: Bake textures to tiled OBJs ===
         step2_start = time.time()
         if args.batch_bake:
-            # BATCH MODE: Process all tiles per LOD in single Blender session
-            print("  → Baking textures (batch mode - per LOD processing)...")
-
+            print("  -> Baking textures (batch mode - per LOD processing)...")
             batch_tasks = []
             for lod in sorted(os.listdir(tiling_dir)):
                 lod_folder = os.path.join(tiling_dir, lod)
                 if not os.path.isdir(lod_folder):
                     continue
-
-                # Find all OBJ files in this LOD folder
                 obj_files = glob.glob(os.path.join(lod_folder, "*.obj"))
                 if obj_files:
                     batch_tasks.append((lod, lod_folder, blender_config))
@@ -285,7 +247,6 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
             if batch_tasks:
                 max_bake_workers = min(len(batch_tasks), args.max_bake_workers)
                 print(f"    Processing {len(batch_tasks)} LOD levels with {max_bake_workers} parallel Blender sessions")
-                print(f"    🔄 Batch mode: each Blender session processes all tiles in its LOD")
 
                 completed_lods = 0
                 total_tiles_processed = 0
@@ -293,48 +254,37 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
 
                 with ProcessPoolExecutor(max_workers=max_bake_workers) as executor:
                     futures = {executor.submit(bake_lod_batch, task): task for task in batch_tasks}
-
                     for future in as_completed(futures):
                         try:
                             lod, success, error, tile_count = future.result()
                             completed_lods += 1
-
                             if success:
                                 total_tiles_processed += tile_count
-                                print(f"    ✓ [{completed_lods}/{len(batch_tasks)}] Completed {lod}: {tile_count} tiles baked")
+                                print(f"    [{completed_lods}/{len(batch_tasks)}] Completed {lod}: {tile_count} tiles baked")
                             else:
-                                print(f"    ✗ [{completed_lods}/{len(batch_tasks)}] Failed {lod}: {error}")
+                                print(f"    [{completed_lods}/{len(batch_tasks)}] Failed {lod}: {error}")
                                 failed_lods.append(lod)
                         except Exception as e:
                             completed_lods += 1
-                            print(f"    ✗ [{completed_lods}/{len(batch_tasks)}] Exception: {e}")
+                            print(f"    [{completed_lods}/{len(batch_tasks)}] Exception: {e}")
 
                 if failed_lods:
-                    print(f"    ⚠ Warning: {len(failed_lods)} LOD levels failed to bake")
+                    print(f"    Warning: {len(failed_lods)} LOD levels failed to bake")
                 else:
-                    print(f"    ✓ All {len(batch_tasks)} LOD levels completed ({total_tiles_processed} total tiles)")
+                    print(f"    All {len(batch_tasks)} LOD levels completed ({total_tiles_processed} total tiles)")
             else:
                 print("    No tiles found for baking")
         else:
-            # PER-TILE MODE: Process each tile in parallel (default)
-            print("  → Baking textures (per-tile parallel processing)...")
-
-            # Collect ALL individual OBJ tiles from ALL LOD folders
+            print("  -> Baking textures (per-tile parallel processing)...")
             bake_tasks = []
             tile_index = 0
             for lod in sorted(os.listdir(tiling_dir)):
                 lod_folder = os.path.join(tiling_dir, lod)
                 if not os.path.isdir(lod_folder):
                     continue
-
-                # Find all OBJ files in this LOD folder
                 obj_files = glob.glob(os.path.join(lod_folder, "*.obj"))
-
-                # Create output directory for baked tiles
                 baked_output_dir = os.path.join(lod_folder, "baked")
                 os.makedirs(baked_output_dir, exist_ok=True)
-
-                # Add each OBJ file as a separate task
                 for obj_file in obj_files:
                     bake_tasks.append((obj_file, baked_output_dir, blender_config, tile_index, len(obj_files)))
                     tile_index += 1
@@ -342,77 +292,68 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
             if bake_tasks:
                 total_tiles = len(bake_tasks)
                 max_bake_workers = args.max_bake_workers
-
                 print(f"    Baking {total_tiles} tiles across ALL LOD levels with {max_bake_workers} workers")
-                print(f"    ⚡ Per-tile parallelization ensures all workers stay busy")
 
                 completed_count = 0
                 failed_tiles = []
 
                 with ProcessPoolExecutor(max_workers=max_bake_workers) as executor:
                     futures = {executor.submit(bake_single_tile, task): task for task in bake_tasks}
-
                     for future in as_completed(futures):
                         try:
                             tile_name, success, error, idx = future.result()
                             completed_count += 1
-
                             if success:
-                                print(f"    ✓ [{completed_count}/{total_tiles}] Baked: {tile_name}")
+                                print(f"    [{completed_count}/{total_tiles}] Baked: {tile_name}")
                             else:
-                                print(f"    ✗ [{completed_count}/{total_tiles}] Failed: {tile_name} - {error}")
+                                print(f"    [{completed_count}/{total_tiles}] Failed: {tile_name} - {error}")
                                 failed_tiles.append(tile_name)
                         except Exception as e:
                             completed_count += 1
-                            print(f"    ✗ [{completed_count}/{total_tiles}] Exception: {e}")
+                            print(f"    [{completed_count}/{total_tiles}] Exception: {e}")
 
                 if failed_tiles:
-                    print(f"    ⚠ Warning: {len(failed_tiles)} tiles failed to bake")
+                    print(f"    Warning: {len(failed_tiles)} tiles failed to bake")
                 else:
-                    print(f"    ✓ All {total_tiles} tiles baked successfully")
+                    print(f"    All {total_tiles} tiles baked successfully")
             else:
                 print("    No tiles found for baking")
 
         phase_times['Step 2: Texture Baking'] = time.time() - step2_start
-        print(f"    ⏱ Baking completed in {phase_times['Step 2: Texture Baking']:.2f}s")
+        print(f"    Baking completed in {phase_times['Step 2: Texture Baking']:.2f}s")
 
-        # === Step 3: Convert tiles to GLB + Generate tilesets (PARALLELIZED) ===
-        print("  → Converting to GLB and generating tilesets (parallel processing)...")
+        # === Step 3: Convert tiles to GLB + Generate tilesets ===
+        print("  -> Converting to GLB and generating tilesets (parallel processing)...")
         step3_start = time.time()
-        
-        # Collect all baked LOD folders for GLB conversion
+
         conversion_tasks = []
         for lod in os.listdir(tiling_dir):
             tiling_dir_path = os.path.join(tiling_dir, lod, "baked")
             if not os.path.isdir(tiling_dir_path):
                 continue
             conversion_tasks.append((lod, tiling_dir_path, model_output_dir, blender_config))
-        
-        if conversion_tasks:
-            # GLB conversion using Blender - can now safely use parallelism
-            # No longer using obj23dtiles/npm which had cache contention issues
-            max_conversion_workers = args.max_conversion_workers if hasattr(args, 'max_conversion_workers') else min(4, max(1, multiprocessing.cpu_count() // 2))
 
+        if conversion_tasks:
+            max_conversion_workers = args.max_conversion_workers if hasattr(args, 'max_conversion_workers') else min(4, max(1, multiprocessing.cpu_count() // 2))
             print(f"    Launching {len(conversion_tasks)} conversion tasks with {max_conversion_workers} workers (Blender-based)")
-            
+
             with ProcessPoolExecutor(max_workers=max_conversion_workers) as executor:
                 futures = {executor.submit(convert_lod_to_glb, task): task[0] for task in conversion_tasks}
-                
                 for future in as_completed(futures):
                     lod = futures[future]
                     try:
                         result_lod, success, error = future.result()
                         if success:
-                            print(f"    ✓ Converted LOD: {result_lod}")
+                            print(f"    Converted LOD: {result_lod}")
                         else:
-                            print(f"    ✗ Failed to convert LOD {result_lod}: {error}")
+                            print(f"    Failed to convert LOD {result_lod}: {error}")
                     except Exception as e:
-                        print(f"    ✗ Exception during conversion LOD {lod}: {e}")
+                        print(f"    Exception during conversion LOD {lod}: {e}")
         else:
             print("    No baked LOD folders found for conversion")
 
         phase_times['Step 3: GLB Conversion'] = time.time() - step3_start
-        print(f"    ⏱ Conversion completed in {phase_times['Step 3: GLB Conversion']:.2f}s")
+        print(f"    Conversion completed in {phase_times['Step 3: GLB Conversion']:.2f}s")
 
         # === Step 4: Clean up temp directory unless --temp is used ===
         temp_dir = os.path.join(model_output_dir, "temp")
@@ -420,19 +361,19 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
             shutil.rmtree(temp_dir)
 
         # === Step 5: Generate and restructure tileset.json ===
-        print("  → Generating tileset.json...")
+        print("  -> Generating tileset.json...")
         step5_start = time.time()
         tileset_path = os.path.join(model_output_dir, "tileset.json")
         generate_tileset_json(model_output_dir,
-                            longitude=args.longitude,
-                            latitude=args.latitude,
-                            height=args.height)
+                              longitude=args.longitude,
+                              latitude=args.latitude,
+                              height=args.height)
         restructure_tileset(tileset_path, tileset_path)
         phase_times['Step 5: Tileset Generation'] = time.time() - step5_start
 
         # === Step 6: Gzip the final output if --gzip is enabled ===
         if args.gzip:
-            print("  → Applying gzip compression...")
+            print("  -> Applying gzip compression...")
             step6_start = time.time()
             gzip_output(model_output_dir)
             phase_times['Step 6: Gzip Compression'] = time.time() - step6_start
@@ -442,7 +383,7 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
 
         # Print timing summary
         print(f"\n  {'='*60}")
-        print(f"  ⏱  PERFORMANCE SUMMARY")
+        print(f"  PERFORMANCE SUMMARY")
         print(f"  {'='*60}")
         for phase, duration in phase_times.items():
             percent = (duration / total_time * 100) if total_time > 0 else 0
@@ -451,15 +392,154 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
         print(f"  {'TOTAL PIPELINE TIME':.<40} {total_time:>8.2f}s")
         print(f"  {'='*60}")
 
-        print(f"  ✓ Successfully processed: {input_basename}")
-        
+        return True
+
     except Exception as e:
-        print(f"  ✗ Error processing {input_basename}: {str(e)}")
+        print(f"  Error in core pipeline: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
-    
-    return True
+
+
+def process_single_obj(input_file, output_base_dir, args, blender_config):
+    """
+    Process a single OBJ file through the entire pipeline with parallelization.
+    If the file exceeds --presplit-threshold, it is split into smaller chunks
+    first, each chunk is processed independently, and the tilesets are merged.
+    """
+    print(f"\n{'='*60}")
+    print(f"Processing: {input_file}")
+    print(f"{'='*60}")
+
+    # Get the base name of the input file (e.g., building_LOD400.obj → building_LOD400)
+    input_basename = os.path.splitext(os.path.basename(input_file))[0]
+
+    # Create output directory for this specific model
+    model_output_dir = os.path.join(output_base_dir, input_basename)
+
+    # Check if output directory already exists
+    if os.path.exists(model_output_dir):
+        if args.force:
+            print(f"  ⚠ Output directory exists, removing due to --force: {model_output_dir}")
+            shutil.rmtree(model_output_dir)
+        else:
+            print(f"  ⊗ Output directory already exists, skipping: {model_output_dir}")
+            return None  # Return None to indicate skipped (not success or failure)
+
+    os.makedirs(model_output_dir, exist_ok=True)
+
+    print(f"Output directory: {model_output_dir}")
+
+    # === Pre-split check ===
+    presplit_threshold = getattr(args, 'presplit_threshold', 20_000_000)
+    if presplit_threshold > 0:
+        print(f"  Checking if pre-split is needed (threshold: {presplit_threshold:,} triangles)...")
+        tri_count = estimate_obj_triangles(input_file)
+        print(f"  Input has {tri_count:,} faces.")
+
+        if tri_count > presplit_threshold:
+            print(f"  Pre-splitting required ({tri_count:,} > {presplit_threshold:,})...")
+            presplit_start = time.time()
+
+            # Create a temp directory for pre-split chunks
+            presplit_dir = os.path.join(model_output_dir, "temp", "presplit_chunks")
+            os.makedirs(presplit_dir, exist_ok=True)
+
+            chunk_paths = presplit_if_needed(
+                input_file, presplit_dir,
+                max_triangles=presplit_threshold
+            )
+
+            presplit_time = time.time() - presplit_start
+            print(f"  Pre-split produced {len(chunk_paths)} chunk(s) in {presplit_time:.1f}s")
+
+            if len(chunk_paths) <= 1:
+                print(f"  Pre-split did not produce multiple chunks. Proceeding normally.")
+                # Fall through to normal processing
+            else:
+                # Process each chunk independently, then merge tilesets
+                chunk_tileset_paths = []
+                all_success = True
+
+                for ci, chunk_path in enumerate(chunk_paths, 1):
+                    chunk_basename = os.path.splitext(os.path.basename(chunk_path))[0]
+                    chunk_output_dir = os.path.join(model_output_dir, f"chunk_{ci:03d}_{chunk_basename}")
+                    os.makedirs(chunk_output_dir, exist_ok=True)
+
+                    print(f"\n  --- Processing chunk {ci}/{len(chunk_paths)}: {chunk_basename} ---")
+
+                    try:
+                        result = _process_single_obj_core(
+                            chunk_path, chunk_output_dir, args, blender_config
+                        )
+                        if result:
+                            tileset_path = os.path.join(chunk_output_dir, "tileset.json")
+                            if os.path.exists(tileset_path):
+                                chunk_tileset_paths.append(tileset_path)
+                            else:
+                                print(f"  WARNING: tileset.json not found for chunk {ci}")
+                                all_success = False
+                        else:
+                            all_success = False
+                    except Exception as e:
+                        print(f"  ERROR processing chunk {ci}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        all_success = False
+
+                # === Flatten chunk outputs into model_output_dir ===
+                # Each chunk produced GLBs with generic names (0_0_0_0.glb etc.)
+                # that collide across chunks. Prefix them with c{N:02d}_ for uniqueness
+                # and move them to the root output directory.
+                if chunk_tileset_paths:
+                    print(f"\n  Flattening chunk outputs into root directory...")
+                    prefix_map = {}  # chunk_dir -> prefix string
+                    for ci, chunk_path in enumerate(chunk_paths, 1):
+                        chunk_basename_c = os.path.splitext(os.path.basename(chunk_path))[0]
+                        chunk_output_dir = os.path.join(model_output_dir, f"chunk_{ci:03d}_{chunk_basename_c}")
+                        prefix = f"c{ci:02d}_"
+                        prefix_map[os.path.normpath(chunk_output_dir)] = prefix
+
+                        glb_files = glob.glob(os.path.join(chunk_output_dir, "*.glb"))
+                        for glb_file in glb_files:
+                            new_name = prefix + os.path.basename(glb_file)
+                            dest = os.path.join(model_output_dir, new_name)
+                            shutil.move(glb_file, dest)
+                        print(f"    Moved {len(glb_files)} GLBs from chunk {ci} with prefix '{prefix}'")
+
+                # Merge tilesets (with prefix mapping for flat URIs)
+                if chunk_tileset_paths:
+                    print(f"\n  Merging {len(chunk_tileset_paths)} chunk tilesets...")
+                    merged_tileset = os.path.join(model_output_dir, "tileset.json")
+                    merge_tilesets(chunk_tileset_paths, merged_tileset, prefix_map=prefix_map)
+
+                # Clean up chunk subdirectories
+                if chunk_tileset_paths:
+                    for ci, chunk_path in enumerate(chunk_paths, 1):
+                        chunk_basename_c = os.path.splitext(os.path.basename(chunk_path))[0]
+                        chunk_output_dir = os.path.join(model_output_dir, f"chunk_{ci:03d}_{chunk_basename_c}")
+                        if os.path.exists(chunk_output_dir):
+                            shutil.rmtree(chunk_output_dir)
+                            print(f"    Cleaned up {os.path.basename(chunk_output_dir)}")
+
+                # Clean up presplit temp dir
+                if not args.temp and os.path.exists(presplit_dir):
+                    shutil.rmtree(presplit_dir)
+
+                if all_success and chunk_tileset_paths:
+                    print(f"  ✓ Successfully processed (pre-split): {input_basename}")
+                    return True
+                else:
+                    print(f"  ✗ Some chunks failed for: {input_basename}")
+                    return False
+
+    # Normal (non-presplit) path — delegate to core pipeline
+    result = _process_single_obj_core(input_file, model_output_dir, args, blender_config)
+    if result:
+        print(f"  ✓ Successfully processed: {input_basename}")
+    else:
+        print(f"  ✗ Error processing: {input_basename}")
+    return result
 
 
 def main():
@@ -485,6 +565,11 @@ def main():
                        help="Phase 3: Enable parallel octree tiling (process first-level chunks in parallel)")
     parser.add_argument("--max-tiling-workers", type=int, default=None,
                        help="Maximum parallel workers for tiling (default: 4, used with --parallel-tiling)")
+
+    # Pre-splitting options
+    parser.add_argument("--presplit-threshold", type=int, default=20_000_000,
+                       help="Face count threshold for pre-splitting large OBJ files (default: 20M). "
+                            "Set to 0 to disable pre-splitting.")
 
     # Geolocation options
     parser.add_argument("--longitude", type=str, default="-75.703833",
@@ -521,7 +606,7 @@ def main():
     
     # === Blender config ===
     blender_config = {
-        'exe': "C:/Program Files/Blender Foundation/Blender 4.4/blender.exe",
+        'exe': "C:/Program Files/Blender Foundation/Blender 4.5/blender.exe",
         'lod_script': "./BlenderScripts/lodOBJ.py",
         'tiling_script': "./BlenderScripts/tileOBJ.py",
         'baking_script': "./BlenderScripts/bakeTextures.py",
