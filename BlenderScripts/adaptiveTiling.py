@@ -3,6 +3,7 @@ from mathutils import Vector
 import os
 import sys
 import json
+import gc
 
 # ===========================================
 # CONFIGURATION - MODIFY THESE PATHS FOR TESTING
@@ -551,24 +552,31 @@ def process_object_adaptive(obj, tile_level=0, ix=0, iy=0, iz=0, max_level=MAX_T
     
     print(f"Object exceeds {TRIANGLE_THRESHOLD} triangles - tiling...")
     
-    # Duplicate the object
+    # Duplicate the object for decimated LOD tile
     decimated_name = f"{tile_level}_{ix}_{iy}_{iz}_decimated"
     decimated_obj = duplicate_object(obj, decimated_name)
-    
+
     # Decimate the duplicate
     decimate_object(decimated_obj, TRIANGLE_THRESHOLD)
     export_object_test(decimated_obj, TEST_OUTPUT_DIR)
-    
-    # For testing, we might want to keep the decimated object visible
-    # Remove the decimated object from scene (we've exported it)
-    # bpy.data.objects.remove(decimated_obj, do_unlink=True)
-    
+
+    # CRITICAL: Remove the decimated object immediately after export to free memory.
+    # For the 90M model this frees ~10 GB before the bisection step.
+    mesh_data = decimated_obj.data
+    bpy.data.objects.remove(decimated_obj, do_unlink=True)
+    bpy.data.meshes.remove(mesh_data, do_unlink=True)
+
     # Bisect the original object into octree
     chunks = bisect_object_octree(obj, tile_level + 1, ix, iy, iz)
     
-    # Remove the original object (it's been split)
+    # Remove the original object AND its mesh data (it's been split into chunks)
+    mesh_data = obj.data
     bpy.data.objects.remove(obj, do_unlink=True)
-    
+    bpy.data.meshes.remove(mesh_data, do_unlink=True)
+
+    # Force garbage collection to reclaim memory before processing chunks
+    gc.collect()
+
     # Recursively process each chunk
     for chunk in chunks:
         # Parse chunk name to get coordinates
@@ -710,8 +718,10 @@ def run_adaptive_tiling_test():
             decimate_object(decimated_obj, TRIANGLE_THRESHOLD)
             export_object_test(decimated_obj, TEST_OUTPUT_DIR)
 
-            # Clean up decimated object (we've exported it)
+            # Clean up decimated object AND its mesh data to free memory
+            mesh_data = decimated_obj.data
             bpy.data.objects.remove(decimated_obj, do_unlink=True)
+            bpy.data.meshes.remove(mesh_data, do_unlink=True)
             print(f"  ✓ Root tile created and exported to TileLevel_0")
         else:
             print(f"\nModel has {triangle_count} triangles (≤ {TRIANGLE_THRESHOLD})")
