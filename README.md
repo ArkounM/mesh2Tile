@@ -181,8 +181,8 @@ The pipeline uses the `3d-tiles-tools` npm package for tileset.json generation a
 - Adjust with `--max-bake-workers` and `--max-conversion-workers` flags
 
 ### Tiling Parameters
-Edit `BlenderScripts/adaptiveTiling.py` to adjust:
-- `TRIANGLE_THRESHOLD = 20000` - Triangles per tile
+Adjust via CLI or config file:
+- `--triangle-threshold 20000` - Triangles per tile
 - `MAX_TILE_LEVEL = 3` - Maximum octree depth
 - `MERGE_DISTANCE = 0.001` - Non-manifold edge merge distance
 
