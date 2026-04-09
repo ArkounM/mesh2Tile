@@ -33,24 +33,45 @@ Optional Gzip Compression
 3D Tiles Output
 ```
 
-## Quick Start
+## Getting Started
+
+### Prerequisites
+
+- **Python 3.9+** — [Download](https://www.python.org/downloads/)
+- **Blender 4.4+** — [Download](https://www.blender.org/download/) (auto-detected from PATH and common install locations)
+- **Node.js 18+** — [Download](https://nodejs.org/) (provides npx for 3d-tiles-tools)
+
+### Installation
+
+```bash
+git clone <repo-url>
+cd mesh2Tile_repo
+pip install -e .
+```
+
+### Verify
+
+```bash
+mesh2tile --version
+mesh2tile --help
+```
 
 ### Basic Usage
 
 ```bash
-python mesh2tile.py --input path/to/input.obj --output path/to/output --gzip
+mesh2tile -i path/to/obj/directory -o path/to/output --gzip --longitude -75.7 --latitude 45.4 --height 77.5
 ```
 
-### Batch Processing Directory
+### Batch Processing
 
 ```bash
-python mesh2tile.py --input path/to/obj/directory --output path/to/output --gzip --continue-on-error
+mesh2tile -i path/to/obj/directory -o path/to/output --gzip --continue-on-error
 ```
 
 ### Preserve Intermediate Files
 
 ```bash
-python mesh2tile.py --input input.obj --output output/ --temp
+mesh2tile -i input/ -o output/ --temp
 ```
 
 ## Command-Line Options
@@ -67,9 +88,56 @@ python mesh2tile.py --input input.obj --output output/ --temp
 | `--continue-on-error` | - | Continue processing on file failure | False |
 | `--max-bake-workers` | - | Parallel baking workers | CPU/2 (max 4) |
 | `--max-conversion-workers` | - | Parallel conversion workers | CPU/2 (max 4) |
-| `--longitude` | - | Longitude in degrees for tileset positioning | -75.703833 |
-| `--latitude` | - | Latitude in degrees for tileset positioning | 45.417139 |
-| `--height` | - | Height in meters for tileset positioning | 77.572 |
+| `--longitude` | - | Longitude in degrees for tileset positioning | 0.0 |
+| `--latitude` | - | Latitude in degrees for tileset positioning | 0.0 |
+| `--height` | - | Height in meters for tileset positioning | 0.0 |
+| `--config` | - | Path to JSON config file | - |
+| `--save-config` | - | Save resolved config to file and exit | - |
+| `--blender-path` | - | Override Blender auto-detection | - |
+| `--triangle-threshold` | - | Triangles per tile | 20000 |
+| `--bake-samples` | - | Cycles bake samples | 128 |
+| `--texture-max-size` | - | Max bake texture dimension | 1024 |
+| `--version` | - | Show version and exit | - |
+
+## Configuration
+
+### Config File
+
+Save your preferred settings to a JSON file:
+
+```bash
+mesh2tile -i input/ -o output/ --triangle-threshold 50000 --bake-samples 64 --save-config my_settings.json
+```
+
+Reuse saved settings:
+
+```bash
+mesh2tile -i input/ -o output/ --config my_settings.json
+```
+
+Example config file:
+
+```json
+{
+    "triangle_threshold": 50000,
+    "bake_samples": 64,
+    "longitude": "-75.703833",
+    "latitude": "45.417139",
+    "height": "77.572"
+}
+```
+
+All settings from the config file can be overridden by CLI arguments.
+
+### Geolocation
+
+Default geolocation is `0.0, 0.0, 0.0`. Set coordinates for your project:
+
+```bash
+mesh2tile -i input/ -o output/ --longitude -75.7 --latitude 45.4 --height 77.5
+```
+
+Or via config file for reuse across runs.
 
 ## Output Structure
 
@@ -92,12 +160,6 @@ output_directory/
 
 ## Requirements
 
-### Software Dependencies
-- **Python**: 3.8+ (3.11+ recommended)
-- **Blender**: 4.4+ (auto-detected from PATH and common install locations)
-- **Node.js**: Required for tileset.json generation and gzip compression
-- **npm**: Required for 3d-tiles-tools package
-
 ### Node.js Packages
 The pipeline uses the `3d-tiles-tools` npm package for tileset.json generation and optional gzip compression:
 ```bash
@@ -111,13 +173,7 @@ The pipeline uses the `3d-tiles-tools` npm package for tileset.json generation a
 - **CPU**: Multi-core processor (parallel processing scales with cores)
 - **GPU**: Optional (can improve Blender baking performance)
 
-## Configuration
-
-### Blender Path
-Blender is auto-detected via `PATH` and common install locations per OS. If auto-detection fails, ensure Blender is on your `PATH` or installed in a standard location:
-- **Windows**: `C:\Program Files\Blender Foundation\Blender X.X\blender.exe`
-- **macOS**: `/Applications/Blender.app/Contents/MacOS/Blender`
-- **Linux**: `/usr/bin/blender` or `/snap/bin/blender`
+## Advanced Configuration
 
 ### Parallelization Tuning
 - **Baking Workers**: Default is CPU cores / 2, max 4 (good for GPU baking)
