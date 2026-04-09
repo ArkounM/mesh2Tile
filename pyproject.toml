@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mesh2tile"
+version = "2.1.0"
+description = "OBJ to Cesium 3D Tiles converter with adaptive octree tiling"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+dependencies = ["numpy"]
+
+[project.scripts]
+mesh2tile = "mesh2tile.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mesh2tile*"]
+
+[tool.setuptools.package-data]
+"mesh2tile" = ["BlenderScripts/*.py"]
