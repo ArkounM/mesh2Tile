@@ -184,7 +184,7 @@ def setup_cycles_gpu():
     
     return True
 
-def setup_bake_settings(texture_size=1024):
+def setup_bake_settings(texture_size=1024, bake_samples=128):
     """Configure bake settings optimized for speed with adaptive settings based on texture size"""
     print(f"Configuring bake settings for {texture_size}x{texture_size} texture...")
 
@@ -225,7 +225,7 @@ def setup_bake_settings(texture_size=1024):
     print(f"  UV margin: {margin_pixels}px (extends island colors into background)")
 
     # Speed-optimized settings (reduced samples with denoising compensation)
-    bpy.context.scene.cycles.samples = 128  # Reduced from 128 for 4x faster baking
+    bpy.context.scene.cycles.samples = bake_samples
     bpy.context.scene.cycles.use_denoising = True  # Enable to compensate for lower samples
     bpy.context.scene.cycles.denoiser = 'OPENIMAGEDENOISE'
 
@@ -342,7 +342,7 @@ def create_baked_material(obj, texture_name, width, height):
     
     return img
 
-def process_obj_file(obj_path, output_dir, metadata=None):
+def process_obj_file(obj_path, output_dir, metadata=None, bake_samples=128):
     """Process a single OBJ file - optimized for batch processing with adaptive texture sizing"""
     print(f"\n=== Processing: {obj_path} ===")
 
@@ -380,7 +380,7 @@ def process_obj_file(obj_path, output_dir, metadata=None):
     print(f"  Selected texture size: {texture_size}x{texture_size}")
 
     # Setup bake settings with adaptive parameters based on texture size
-    setup_bake_settings(texture_size)
+    setup_bake_settings(texture_size, bake_samples)
 
     # Calculate adaptive island margin based on texture size
     # Smaller textures need smaller margins to avoid wasting texture space
@@ -482,7 +482,7 @@ def process_obj_file(obj_path, output_dir, metadata=None):
     # Clear unused data to prevent memory buildup during batch processing
     bpy.ops.outliner.orphans_purge(do_recursive=True)
 
-def bake_textures_to_tiles(input_directory, output_directory):
+def bake_textures_to_tiles(input_directory, output_directory, bake_samples=128):
     """Main function to process all OBJ files in the input directory with adaptive texture sizing"""
     if not os.path.exists(input_directory):
         print(f"Input directory does not exist: {input_directory}")
@@ -530,7 +530,7 @@ def bake_textures_to_tiles(input_directory, output_directory):
         print(f"Processing {i+1}/{len(obj_files)}: {os.path.basename(obj_file)}")
         print(f"{'='*60}")
         try:
-            process_obj_file(obj_file, input_directory, metadata)
+            process_obj_file(obj_file, input_directory, metadata, bake_samples)
         except Exception as e:
             print(f"Error processing {obj_file}: {e}")
             continue
@@ -560,6 +560,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, help="Path to folder with .obj tiles")
     parser.add_argument("--output", required=True, help="Path to output folder for baked assets")
+    parser.add_argument("--config", default=None, help="Path to mesh2tile config JSON")
     
     try:
         args = parser.parse_args(argv)
@@ -569,7 +570,17 @@ if __name__ == "__main__":
         print(f"Failed to parse arguments: {argv}")
         raise e
 
+    # Load config
+    _bake_config = {}
+    if args.config:
+        try:
+            with open(args.config) as _f:
+                _bake_config = json.load(_f)
+        except Exception as _e:
+            print(f"Warning: Could not load config: {_e}")
+
     input_directory = args.input
     output_directory = args.output
 
-    bake_textures_to_tiles(input_directory, output_directory)
+    bake_textures_to_tiles(input_directory, output_directory,
+                           bake_samples=_bake_config.get("bake_samples", 128))

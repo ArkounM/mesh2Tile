@@ -40,6 +40,23 @@ else:
     print("❌ Error: Missing '--' in arguments")
     sys.exit(1)
 
+# Load config from JSON if --config flag is present in argv
+_config = {}
+if "--config" in argv:
+    _ci = argv.index("--config")
+    try:
+        import json as _json
+        with open(argv[_ci + 1]) as _f:
+            _config = _json.load(_f)
+    except Exception as _e:
+        print(f"Warning: Could not load config file: {_e}")
+
+# Override from config if not already set via positional args
+if len(argv) < 8:
+    TRIANGLE_THRESHOLD = _config.get("triangle_threshold", TRIANGLE_THRESHOLD)
+if len(argv) < 9:
+    MERGE_DISTANCE = _config.get("merge_distance", MERGE_DISTANCE)
+
 # Global counters
 total_exported = 0
 total_decimated = 0

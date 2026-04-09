@@ -232,7 +232,7 @@ def setup_cycles_gpu():
 
     return True
 
-def setup_bake_settings(texture_size=1024):
+def setup_bake_settings(texture_size=1024, bake_samples=32):
     """Configure bake settings optimized for speed with adaptive settings based on texture size"""
     # Basic bake settings
     bpy.context.scene.render.bake.use_pass_direct = False
@@ -272,7 +272,7 @@ def setup_bake_settings(texture_size=1024):
     print(f"    UV margin: {margin_pixels}px (extends island colors into background)")
 
     # Speed-optimized settings (reduced samples with denoising compensation)
-    bpy.context.scene.cycles.samples = 32  # Reduced from 128 for 4x faster baking
+    bpy.context.scene.cycles.samples = bake_samples
     bpy.context.scene.cycles.use_denoising = True  # Enable to compensate for lower samples
     bpy.context.scene.cycles.denoiser = 'OPENIMAGEDENOISE'
 
@@ -342,7 +342,7 @@ def create_baked_material(obj, texture_name, width, height):
 
     return img
 
-def bake_single_tile(obj_path, output_dir):
+def bake_single_tile(obj_path, output_dir, bake_samples=32):
     """Process a single OBJ file - optimized for parallel execution with adaptive texture sizing"""
 
     # Clear scene
@@ -381,7 +381,7 @@ def bake_single_tile(obj_path, output_dir):
 
     # Setup bake settings with adaptive parameters based on texture size
     setup_cycles_gpu()
-    setup_bake_settings(texture_size)
+    setup_bake_settings(texture_size, bake_samples)
 
     # Calculate adaptive island margin based on texture size
     # Smaller textures need smaller margins to avoid wasting texture space
@@ -493,6 +493,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, help="Path to single .obj file")
     parser.add_argument("--output", required=True, help="Path to output folder for baked asset")
+    parser.add_argument("--config", default=None, help="Path to mesh2tile config JSON")
 
     try:
         args = parser.parse_args(argv)
@@ -500,10 +501,20 @@ if __name__ == "__main__":
         print(f"ERROR: Failed to parse arguments: {argv}")
         sys.exit(1)
 
+    _bake_config = {}
+    if args.config:
+        try:
+            with open(args.config) as _f:
+                import json
+                _bake_config = json.load(_f)
+        except Exception as _e:
+            print(f"Warning: Could not load config: {_e}")
+
     # Process the single tile
     # Note: setup_cycles_gpu() and setup_bake_settings() are called inside bake_single_tile()
     # with adaptive parameters based on calculated texture size
-    success = bake_single_tile(args.input, args.output)
+    success = bake_single_tile(args.input, args.output,
+                               bake_samples=_bake_config.get("bake_samples", 32))
 
     if not success:
         sys.exit(1)

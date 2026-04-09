@@ -34,12 +34,23 @@ else:
 USE_EXISTING_OBJECT = False  # Set to True to use selected object in scene
 EXISTING_OBJECT_NAME = ""   # Leave empty to use active object, or specify name
 
-# Script parameters
-TRIANGLE_THRESHOLD = 20000
+# Load config from JSON if --config flag is present in argv
+_config = {}
+if "--config" in argv:
+    _ci = argv.index("--config")
+    try:
+        import json as _json
+        with open(argv[_ci + 1]) as _f:
+            _config = _json.load(_f)
+    except Exception as _e:
+        print(f"Warning: Could not load config file: {_e}")
+
+# Script parameters (config overrides hardcoded defaults)
+TRIANGLE_THRESHOLD = _config.get("triangle_threshold", 20000)
 # MAX_TILE_LEVEL is now set from command-line arguments (default: 3)
 
 # Mesh cleanup parameters
-MERGE_DISTANCE = 0.001  # Distance threshold for merging vertices
+MERGE_DISTANCE = _config.get("merge_distance", 0.001)
 
 # ===========================================
 # TEXTURE METADATA GENERATION
@@ -55,7 +66,8 @@ def detect_source_texture_resolution(obj):
 
     if not obj.data.materials:
         print("  No materials found - using default 1024x1024")
-        return 1024, 1024, 1048576
+        _max = _config.get("texture_max_size", 1024)
+        return _max, _max, _max * _max
 
     for mat in obj.data.materials:
         if not mat or not mat.use_nodes:
@@ -71,7 +83,8 @@ def detect_source_texture_resolution(obj):
 
     if max_width == 0 or max_height == 0:
         print("  No textures found in materials - using default 1024x1024")
-        return 1024, 1024, 1048576
+        _max = _config.get("texture_max_size", 1024)
+        return _max, _max, _max * _max
 
     total_pixels = max_width * max_height
     print(f"  Detected source texture: {max_width}x{max_height} ({total_pixels:,} pixels)")
