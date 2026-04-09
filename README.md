@@ -1,4 +1,4 @@
-# mesh2tile v2.0
+# mesh2tile v2.1.0
 
 High-performance OBJ to Cesium 3D Tiles converter with adaptive octree tiling and parallel processing.
 
@@ -94,7 +94,7 @@ output_directory/
 
 ### Software Dependencies
 - **Python**: 3.8+ (3.11+ recommended)
-- **Blender**: 4.4+ (update path in `mesh2tile.py` line 267 if needed)
+- **Blender**: 4.4+ (auto-detected from PATH and common install locations)
 - **Node.js**: Required for tileset.json generation and gzip compression
 - **npm**: Required for 3d-tiles-tools package
 
@@ -114,14 +114,10 @@ The pipeline uses the `3d-tiles-tools` npm package for tileset.json generation a
 ## Configuration
 
 ### Blender Path
-Update the Blender executable path in `mesh2tile.py` (line 267):
-
-```python
-blender_config = {
-    'exe': "C:/Program Files/Blender Foundation/Blender 4.5/blender.exe",
-    # ... other config
-}
-```
+Blender is auto-detected via `PATH` and common install locations per OS. If auto-detection fails, ensure Blender is on your `PATH` or installed in a standard location:
+- **Windows**: `C:\Program Files\Blender Foundation\Blender X.X\blender.exe`
+- **macOS**: `/Applications/Blender.app/Contents/MacOS/Blender`
+- **Linux**: `/usr/bin/blender` or `/snap/bin/blender`
 
 ### Parallelization Tuning
 - **Baking Workers**: Default is CPU cores / 2, max 4 (good for GPU baking)
@@ -189,7 +185,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
 ### Common Issues
 
 **"Blender not found"**
-- Update Blender path in `mesh2tile.py` line 267
+- Ensure Blender is on your PATH or installed in a standard location
 
 **"Out of memory during baking"**
 - Reduce `--max-bake-workers` to 1 or 2
@@ -224,7 +220,7 @@ For issues, feature requests, or contributions, please open an issue on the proj
 
 ---
 
-**Version**: 2.0.0
-**Last Updated**: 2025-10-07
+**Version**: 2.1.0
+**Last Updated**: 2025-11-03
 **Python**: 3.8+
 **Blender**: 4.5+

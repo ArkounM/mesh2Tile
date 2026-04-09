@@ -1,3 +1,5 @@
+__version__ = "2.1.0"
+
 import argparse
 import os
 import sys
@@ -542,6 +544,92 @@ def process_single_obj(input_file, output_base_dir, args, blender_config):
     return result
 
 
+def _check_dependencies(blender_exe):
+    """Pre-check all required dependencies and report clear errors."""
+    errors = []
+
+    # Blender
+    if not blender_exe:
+        errors.append(
+            "Blender not found. Install Blender 4.4+ and either:\n"
+            "  - Add it to your PATH, or\n"
+            "  - Install to a standard location (e.g. C:\\Program Files\\Blender Foundation\\)"
+        )
+    else:
+        try:
+            result = subprocess.run(
+                [blender_exe, "--version"],
+                capture_output=True, text=True, timeout=15
+            )
+            version_line = result.stdout.strip().split("\n")[0] if result.stdout else "unknown"
+            print(f"  Blender: {version_line} ({blender_exe})")
+        except Exception as e:
+            errors.append(f"Blender found at {blender_exe} but failed to run: {e}")
+
+    # npx (Node.js)
+    npx_path = shutil.which("npx")
+    if not npx_path:
+        # Check common Windows locations
+        for path in [r"C:\Program Files\nodejs\npx.cmd", r"C:\nvm4w\nodejs\npx.cmd"]:
+            if os.path.exists(path):
+                npx_path = path
+                break
+    if not npx_path:
+        errors.append(
+            "npx not found. Install Node.js (which includes npx) and add it to your PATH.\n"
+            "  Node.js is required for tileset.json generation via 3d-tiles-tools."
+        )
+    else:
+        print(f"  npx: {npx_path}")
+
+    # numpy
+    try:
+        import numpy
+        print(f"  numpy: {numpy.__version__}")
+    except ImportError:
+        errors.append(
+            "numpy not found. Install it with:\n"
+            "  pip install numpy   (or: pip install -r requirements.txt)"
+        )
+
+    if errors:
+        print("\n[ERROR] Missing dependencies:\n")
+        for i, err in enumerate(errors, 1):
+            print(f"  {i}. {err}\n")
+        sys.exit(1)
+
+    print()
+
+
+def _find_blender():
+    """Find the Blender executable via PATH, then common install locations per OS."""
+    blender = shutil.which("blender")
+    if blender:
+        return blender
+
+    if sys.platform == "win32":
+        # Search Program Files for any Blender version (prefer newest)
+        for base in [os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+                     os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")]:
+            blender_dir = os.path.join(base, "Blender Foundation")
+            if os.path.isdir(blender_dir):
+                versions = sorted(os.listdir(blender_dir), reverse=True)
+                for ver in versions:
+                    candidate = os.path.join(blender_dir, ver, "blender.exe")
+                    if os.path.isfile(candidate):
+                        return candidate
+    elif sys.platform == "darwin":
+        candidate = "/Applications/Blender.app/Contents/MacOS/Blender"
+        if os.path.isfile(candidate):
+            return candidate
+    else:  # Linux / other Unix
+        for candidate in ["/usr/bin/blender", "/snap/bin/blender"]:
+            if os.path.isfile(candidate):
+                return candidate
+
+    return None
+
+
 def main():
     # === Parse CLI arguments ===
     parser = argparse.ArgumentParser(description="Batch mesh-to-tileset pipeline for directory processing with parallelization.")
@@ -604,9 +692,14 @@ def main():
     output_dir = os.path.abspath(args.output)
     os.makedirs(output_dir, exist_ok=True)
     
+    # === Dependency check ===
+    blender_exe = _find_blender()
+    print("Checking dependencies...")
+    _check_dependencies(blender_exe)
+
     # === Blender config ===
     blender_config = {
-        'exe': "C:/Program Files/Blender Foundation/Blender 4.5/blender.exe",
+        'exe': blender_exe,
         'lod_script': "./BlenderScripts/lodOBJ.py",
         'tiling_script': "./BlenderScripts/tileOBJ.py",
         'baking_script': "./BlenderScripts/bakeTextures.py",
